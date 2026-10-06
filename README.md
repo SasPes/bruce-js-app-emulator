@@ -3,6 +3,8 @@
 A browser emulator for Bruce JavaScript apps on the LILYGO T-Embed CC1101,
 with a **320 x 170** pixel display.
 
+**Live emulator:** [bruce-js-app-emulator.saspes.workers.dev](https://bruce-js-app-emulator.saspes.workers.dev/)
+
 ![Bruce emulator running Key Decoding alongside the runtime console](ss/ss.png)
 
 ## Run
