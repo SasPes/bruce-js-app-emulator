@@ -243,6 +243,8 @@
 
     const display = {
       width:()=>320, height:()=>170,
+      getRotation:()=>1,
+      getBrightness:()=>100,
       color:color,
       fill:c=>emit("fill",[c]),
       setCursor:(x,y)=>{cursorX=x;cursorY=y;},
@@ -354,7 +356,55 @@
     const storage = {
       read:(name)=>storageMap[name] || "",
       write:(name,value)=>{storageMap[name]=String(value);return true;},
-      remove:(name)=>{delete storageMap[name];}
+      remove:(name)=>{delete storageMap[name];},
+      spaceLittleFS:()=>{
+        const bytes = Object.keys(storageMap).reduce(
+          (sum,name)=>sum + new TextEncoder().encode(storageMap[name]).length, 0);
+        const used = Math.ceil(bytes / 1024);
+        const total = Math.max(2048, used);
+        return {total:total, used:used, free:total-used};
+      },
+      spaceSDCard:()=>({total:0, used:0, free:0})
+    };
+
+    // Synthetic hardware readings, not measurements of the host computer.
+    const device = {
+      getName:()=>"Bruce Web Emulator",
+      getBoard:()=>"LILYGO T-Embed CC1101",
+      getModel:()=>"ESP32-S3 (simulated)",
+      getBruceVersion:()=>BRUCE_VERSION,
+      getBattery:()=>100,
+      getBatteryDetailed:()=>({
+        battery_percent:100,
+        remaining_capacity:1500,
+        full_capacity:1500,
+        design_capacity:1500,
+        is_charging:false,
+        charging_voltage:0,
+        charging_current:0,
+        time_to_empty:900,
+        average_power_use:420,
+        voltage:4.2,
+        voltage_raw:4200,
+        current_instant:-100,
+        current_average:-100,
+        current_raw:-100
+      }),
+      getFreeHeapSize:()=>({
+        ram_free:256 * 1024,
+        ram_min_free:240 * 1024,
+        ram_largest_free_block:128 * 1024,
+        ram_size:320 * 1024,
+        psram_free:8 * 1024 * 1024,
+        psram_size:8 * 1024 * 1024,
+        psram_largest_free_block:8 * 1024 * 1024
+      }),
+      getEEPROMSize:()=>512
+    };
+
+    const wifi = {
+      getIPAddress:()=>"0.0.0.0",
+      getMACAddress:()=>"02:00:00:00:00:01"
     };
 
     function withDialogDrawing(draw) {
@@ -464,6 +514,8 @@
       if (name==="storage") return storage;
       if (name==="dialog") return dialog;
       if (name==="audio") return audio;
+      if (name==="device") return device;
+      if (name==="wifi") return wifi;
       throw new Error("Unsupported Bruce module in emulator: "+name);
     }
 

@@ -80,6 +80,10 @@ On-screen buttons provide the same controls.
 - `require("keyboard")`
 - `require("dialog")` success messages and virtual file picker
 - `require("audio")` tone playback and stop
+- `require("device")` name, board, model, Bruce version, battery, heap, and EEPROM information
+- `require("wifi")` IP and MAC address getters only
+- `require("storage")` in-memory files and space information
+- `display.getRotation()` and `display.getBrightness()`
 - `display.createSprite()` offscreen drawing and push
 - `delay(ms)`
 - `print()` / `println()`
