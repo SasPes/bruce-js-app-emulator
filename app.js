@@ -21,6 +21,9 @@
   let worker = null;
   let inputView = null;
   let currentBlobUrl = null;
+  let audioContext = null;
+  let activeTone = null;
+  const sprites = new Map();
 
   const bezel = canvas.parentElement;
   const device = bezel.parentElement;
@@ -100,6 +103,87 @@
     const line = `[${new Date().toLocaleTimeString()}] ${String(msg)}`;
     logEl.textContent += (logEl.textContent ? "\n" : "") + line;
     logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  function unlockAudio() {
+    if (!window.AudioContext) return null;
+    if (!audioContext) {
+      try {
+        audioContext = new AudioContext();
+      } catch (e) {
+        log(`Audio unavailable: ${e.message}`);
+        return null;
+      }
+    }
+    if (audioContext.state === "suspended") {
+      audioContext.resume().catch(e => {
+        log(`Audio could not start: ${e.message}`);
+        stopAudio();
+      });
+    }
+    return audioContext;
+  }
+
+  function completeTone(id) {
+    if (!inputView) return;
+    Atomics.store(inputView, 6, id);
+    Atomics.notify(inputView, 6);
+  }
+
+  function stopAudio() {
+    if (!activeTone) return;
+    const tone = activeTone;
+    activeTone = null;
+    tone.oscillator.onended = null;
+    tone.oscillator.stop();
+    tone.oscillator.disconnect();
+    tone.gain.disconnect();
+    completeTone(tone.id);
+  }
+
+  function playTone(id, frequency, duration) {
+    const context = unlockAudio();
+    if (!context) {
+      log("Audio is not supported by this browser.");
+      completeTone(id);
+      return;
+    }
+    const hz = Number(frequency);
+    const milliseconds = Number(duration);
+    if (!Number.isFinite(hz) || hz <= 0 || hz > 20000 ||
+        !Number.isFinite(milliseconds) || milliseconds < 0) {
+      log(`Invalid audio tone: ${frequency} Hz for ${duration} ms.`);
+      completeTone(id);
+      return;
+    }
+
+    stopAudio();
+    if (milliseconds === 0) {
+      completeTone(id);
+      return;
+    }
+
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+    const now = context.currentTime;
+    const seconds = milliseconds / 1000;
+    const ramp = Math.min(0.005, seconds / 2);
+    oscillator.frequency.setValueAtTime(hz, now);
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(0.12, now + ramp);
+    gain.gain.setValueAtTime(0.12, now + seconds - ramp);
+    gain.gain.linearRampToValueAtTime(0, now + seconds);
+    oscillator.connect(gain);
+    gain.connect(context.destination);
+    activeTone = { id, oscillator, gain };
+    oscillator.onended = () => {
+      if (activeTone && activeTone.oscillator === oscillator) activeTone = null;
+      oscillator.disconnect();
+      gain.disconnect();
+      completeTone(id);
+    };
+    oscillator.start(now);
+    oscillator.stop(now + milliseconds / 1000);
   }
 
   function clearScreen() {
@@ -187,6 +271,67 @@
       drawXBitmap:(x,y,b,w,h,c,bg)=>emit("xbitmap",[x,y,Array.from(b),w,h,c,bg]),
       drawBitmap:(x,y,b,w,h,c,bg)=>emit("xbitmap",[x,y,Array.from(b),w,h,c,bg])
     };
+
+    let nextSpriteId = 0;
+    function createSprite(width, height) {
+      width = width === undefined ? display.width() : Math.trunc(Number(width));
+      height = height === undefined ? display.height() : Math.trunc(Number(height));
+      if (!Number.isInteger(width) || !Number.isInteger(height) ||
+          width <= 0 || height <= 0 || width * height > 4194304) {
+        throw new RangeError("Sprite dimensions must be positive and no larger than 4 megapixels");
+      }
+      const id = ++nextSpriteId;
+      postMessage({type:"spriteCreate", id:id, width:width, height:height});
+      let spriteTextColor = textColor;
+      let spriteTextSize = textSize;
+      let spriteAlignX = "left", spriteAlignY = "top";
+      let spriteCursorX = 0, spriteCursorY = 0;
+      function spriteEmit(op, args) {
+        postMessage({
+          type:"spriteDraw", id:id, op:op, args:args || [],
+          textColor:spriteTextColor, textSize:spriteTextSize,
+          alignX:spriteAlignX, alignY:spriteAlignY
+        });
+      }
+      return {
+        width:()=>width, height:()=>height,
+        color:color,
+        fill:c=>spriteEmit("fill",[c]),
+        fillScreen:c=>spriteEmit("fill",[c]),
+        fillSprite:c=>spriteEmit("fill",[c]),
+        setCursor:(x,y)=>{spriteCursorX=x;spriteCursorY=y;},
+        print:function(){spriteEmit("text",[Array.prototype.slice.call(arguments).join(" "),spriteCursorX,spriteCursorY]);},
+        println:function(){
+          spriteEmit("text",[Array.prototype.slice.call(arguments).join(" "),spriteCursorX,spriteCursorY]);
+          spriteCursorY += 8 * spriteTextSize;
+        },
+        setTextColor:c=>{spriteTextColor=c;},
+        setTextAlign:(a,b)=>{
+          spriteAlignX = (a===1 || a==="center") ? "center" : (a===2 || a==="right") ? "right" : "left";
+          spriteAlignY = (b===2 || b==="middle") ? "middle" : (b===3 || b==="bottom") ? "bottom" : "top";
+        },
+        setTextSize:s=>{spriteTextSize=Math.max(1,Math.trunc(Number(s)||1));},
+        drawText:(t,x,y)=>spriteEmit("text",[t,x,y]),
+        drawString:(t,x,y)=>spriteEmit("text",[t,x,y]),
+        drawPixel:(x,y,c)=>spriteEmit("pixel",[x,y,c]),
+        drawLine:(x,y,x2,y2,c)=>spriteEmit("line",[x,y,x2,y2,c]),
+        drawRect:(x,y,w,h,c)=>spriteEmit("rect",[x,y,w,h,c]),
+        drawFillRect:(x,y,w,h,c)=>spriteEmit("fillRect",[x,y,w,h,c]),
+        drawFillRectGradient:(x,y,w,h,c1)=>spriteEmit("fillRect",[x,y,w,h,c1]),
+        drawRoundRect:(x,y,w,h,r,c)=>spriteEmit("roundRect",[x,y,w,h,r,c]),
+        drawFillRoundRect:(x,y,w,h,r,c)=>spriteEmit("fillRoundRect",[x,y,w,h,r,c]),
+        drawCircle:(x,y,r,c)=>spriteEmit("circle",[x,y,r,c]),
+        drawFillCircle:(x,y,r,c)=>spriteEmit("fillCircle",[x,y,r,c]),
+        drawXBitmap:(x,y,b,w,h,c,bg)=>spriteEmit("xbitmap",[x,y,Array.from(b),w,h,c,bg]),
+        drawBitmap:(x,y,b,w,h,c,bg)=>spriteEmit("xbitmap",[x,y,Array.from(b),w,h,c,bg]),
+        pushSprite:(x,y,transparent)=>postMessage({
+          type:"spritePush", id:id, x:x === undefined ? 0 : x,
+          y:y === undefined ? 0 : y, transparent:transparent
+        }),
+        deleteSprite:()=>postMessage({type:"spriteDelete",id:id})
+      };
+    }
+    display.createSprite = createSprite;
 
     const keyboard = {
       getPrevPress:(hold)=>consume(0,hold),
@@ -300,11 +445,25 @@
       }
     };
 
+    const audio = {
+      tone:(frequency,duration,wait)=>{
+        const id = Atomics.add(input,5,1) + 1;
+        postMessage({type:"audio", op:"tone", id:id, frequency:frequency, duration:duration});
+        if (wait) {
+          while (Atomics.load(input,6) !== id) {
+            Atomics.wait(input,6,Atomics.load(input,6));
+          }
+        }
+      },
+      stop:()=>postMessage({type:"audio", op:"stop"})
+    };
+
     function require(name) {
       if (name==="display") return display;
       if (name==="keyboard") return keyboard;
       if (name==="storage") return storage;
       if (name==="dialog") return dialog;
+      if (name==="audio") return audio;
       throw new Error("Unsupported Bruce module in emulator: "+name);
     }
 
@@ -335,6 +494,44 @@
       const m = e.data;
       if (m.type === "draw") render(m);
       else if (m.type === "log") log(m.text);
+      else if (m.type === "spriteCreate") {
+        const surface = document.createElement("canvas");
+        surface.width = m.width;
+        surface.height = m.height;
+        const surfaceContext = surface.getContext("2d", {alpha:false});
+        sprites.set(m.id, new PixelRenderer(surfaceContext, m.width, m.height));
+      }
+      else if (m.type === "spriteDraw") {
+        const sprite = sprites.get(m.id);
+        if (sprite) {
+          try {
+            sprite.render(m);
+          } catch (e) {
+            log(`Sprite render error: ${e.message}`);
+          }
+        }
+      }
+      else if (m.type === "spritePush") {
+        const sprite = sprites.get(m.id);
+        if (sprite) {
+          try {
+            renderer.blit(sprite, Math.trunc(Number(m.x)), Math.trunc(Number(m.y)), m.transparent);
+            if (renderFrame === null) {
+              renderFrame = requestAnimationFrame(() => {
+                renderFrame = null;
+                renderer.present();
+              });
+            }
+          } catch (e) {
+            log(`Sprite push error: ${e.message}`);
+          }
+        }
+      }
+      else if (m.type === "spriteDelete") sprites.delete(m.id);
+      else if (m.type === "audio") {
+        if (m.op === "tone") playTone(m.id, m.frequency, m.duration);
+        else if (m.op === "stop") stopAudio();
+      }
       else if (m.type === "prompt") log(`Prompt requested: ${m.title || "Input"} (v0.1 returns initial value)`);
       else if (m.type === "done") { setStatus("Finished", "done"); log("Script finished."); }
       else if (m.type === "error") { setStatus("Error", "error"); log(m.text); }
@@ -347,9 +544,11 @@
     if (worker) {
       worker.terminate();
       worker = null;
+      sprites.clear();
       setStatus("Stopped", "idle");
       if (writeLog) log("Script stopped.");
     }
+    stopAudio();
     if (currentBlobUrl) {
       URL.revokeObjectURL(currentBlobUrl);
       currentBlobUrl = null;
@@ -357,6 +556,7 @@
   }
 
   async function loadUrl() {
+    unlockAudio();
     const custom = appSourceEl.value === "custom";
     const url = custom ? urlEl.value.trim() : appSourceEl.value;
     if (!url || (custom && !urlEl.reportValidity())) {
@@ -385,7 +585,10 @@
   }
 
   document.getElementById("loadUrl").onclick = loadUrl;
-  document.getElementById("loadFile").onclick = () => document.getElementById("file").click();
+  document.getElementById("loadFile").onclick = () => {
+    unlockAudio();
+    document.getElementById("file").click();
+  };
   document.getElementById("stop").onclick = () => stop();
   document.getElementById("clearLog").onclick = () => { logEl.textContent=""; };
 

@@ -209,6 +209,24 @@
       }
     }
 
+    blit(source, x, y, transparent) {
+      const sourceData = source.image.data;
+      const transparentColor = transparent === undefined ? null : rgb(transparent);
+      for (let sy = Math.max(0, -y); sy < Math.min(source.height, this.height - y); sy++) {
+        for (let sx = Math.max(0, -x); sx < Math.min(source.width, this.width - x); sx++) {
+          const sourceOffset = (sy * source.width + sx) * 4;
+          const red = sourceData[sourceOffset];
+          const green = sourceData[sourceOffset + 1];
+          const blue = sourceData[sourceOffset + 2];
+          if (transparentColor &&
+              red === transparentColor[0] &&
+              green === transparentColor[1] &&
+              blue === transparentColor[2]) continue;
+          this.pixel(x + sx, y + sy, [red, green, blue]);
+        }
+      }
+    }
+
     render(message) {
       const args = message.args || [];
       if (message.op === "text") { this.text(message); return; }

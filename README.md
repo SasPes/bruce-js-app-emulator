@@ -79,6 +79,8 @@ On-screen buttons provide the same controls.
 - `require("display")`
 - `require("keyboard")`
 - `require("dialog")` success messages and virtual file picker
+- `require("audio")` tone playback and stop
+- `display.createSprite()` offscreen drawing and push
 - `delay(ms)`
 - `print()` / `println()`
 - Display drawing, text, colors, XBitmap
