@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Bruce LILYGO T-Embed CC1101 Emulator</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="app">
+    <header>
+      <div>
+        <h1>Bruce LILYGO T-Embed CC1101 Emulator</h1>
+        <p>Browser runtime for Bruce JavaScript apps</p>
+      </div>
+      <div class="badge">320 × 170</div>
+    </header>
+
+    <section class="workspace">
+      <div class="device-column">
+        <div class="device">
+          <section class="toolbar" aria-label="App controls">
+            <select id="appSource" aria-label="Bruce JavaScript app">
+              <option value="https://raw.githubusercontent.com/SasPes/key-decoding/refs/heads/main/KeyDecoding.js" selected>Key Decoding</option>
+              <option value="https://raw.githubusercontent.com/SasPes/magic-8-ball/refs/heads/main/Magic8ball.js">Magic 8 Ball</option>
+              <option value="https://raw.githubusercontent.com/SasPes/morse-code/refs/heads/main/MorseCode.js">Morse Code</option>
+              <option value="custom">Custom URL</option>
+            </select>
+            <input id="url" type="url"
+              placeholder="https://example.com/app.js"
+              aria-label="Custom Bruce JavaScript URL" hidden>
+            <button id="loadUrl" aria-label="Load app" title="Load app">
+              <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+                <path d="M6 4l10 6-10 6z" fill="currentColor" stroke="none"/>
+              </svg>
+            </button>
+            <button id="loadFile" aria-label="Load .js file" title="Load .js file">
+              <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+                <path d="M11 2H4v16h12V7l-5-5zm0 0v5h5M10 15V9m-3 3 3-3 3 3"/>
+              </svg>
+            </button>
+            <input id="file" type="file" accept=".js,text/javascript" hidden>
+            <button id="stop" class="danger" aria-label="Stop app" title="Stop app">
+              <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+                <rect x="5" y="5" width="10" height="10" rx="1" fill="currentColor" stroke="none"/>
+              </svg>
+            </button>
+            <button id="screenshot" aria-label="Save screenshot" title="Save screenshot (640 x 340)">
+              <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+                <path d="M2 6h4l2-3h4l2 3h4v11H2z"/>
+                <circle cx="10" cy="11" r="3"/>
+              </svg>
+            </button>
+          </section>
+          <div class="display-bezel">
+            <canvas id="screen" width="320" height="170"></canvas>
+          </div>
+          <div class="device-bottom">
+            <div class="side-label">LILYGO<br>T-Embed CC1101</div>
+            <div class="encoder">
+              <button id="encLeft" aria-label="Previous">◀</button>
+              <button id="enc" aria-label="Select">●</button>
+              <button id="encRight" aria-label="Next">▶</button>
+            </div>
+            <button id="esc" class="esc">ESC</button>
+          </div>
+        </div>
+
+      </div>
+
+      <aside class="panel">
+        <div class="panel-title">
+          <span>Runtime console</span>
+          <div class="panel-actions">
+            <span id="status" class="status idle">Idle</span>
+            <button id="clearLog" aria-label="Clear log" title="Clear log">
+              <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+                <path d="M3 5h14M7 5V2h6v3M5 5l1 13h8l1-13M8 8v7m4-7v7"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+        <pre id="log" aria-live="polite"></pre>
+
+        <details>
+          <summary>Supported features</summary>
+          <ul>
+            <li><code>require("display")</code></li>
+            <li><code>require("keyboard")</code></li>
+            <li><code>require("dialog")</code> success messages and virtual file picker</li>
+            <li><code>delay(ms)</code></li>
+            <li><code>print()</code> / <code>println()</code></li>
+            <li>Display drawing, text, colors, XBitmap</li>
+            <li>Blocking Bruce-style polling loops</li>
+          </ul>
+        </details>
+      </aside>
+    </section>
+  </main>
+
+  <script src="pixel-renderer.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
