@@ -78,7 +78,8 @@
 
   if (!window.crossOriginIsolated || typeof SharedArrayBuffer === "undefined") {
     setStatus("Setup required", "error");
-    log("SharedArrayBuffer requires a cross-origin-isolated page. Run python3 start-server.py, open http://localhost:8080, and reload.");
+    log("SharedArrayBuffer requires a cross-origin-isolated page. For hosting, use HTTPS with Cross-Origin-Opener-Policy: same-origin and Cross-Origin-Embedder-Policy: require-corp.");
+    log("For local development, run python3 start-server.py, open http://localhost:8080, and reload.");
     log("Opening index.html directly or using python3 -m http.server will not work.");
     document.getElementById("loadUrl").disabled = true;
     document.getElementById("loadFile").disabled = true;
