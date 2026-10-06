@@ -56,7 +56,7 @@ and upload the script locally if its URL is blocked.
 
 ## Usage
 
-- Select **Key Decoding**, **Magic 8 Ball**, or **Morse Code**, then click the play icon.
+- Select **Key Decoding**, **Magic 8 Ball**, **Morse Code**, or an app under **Apps from Bruce App Store**, then click the play icon.
 - Use **Custom URL** or the upload icon to load another `.js` app.
 - **Stop** ends the app; the camera icon saves the display as a **640 x 340 PNG**.
 

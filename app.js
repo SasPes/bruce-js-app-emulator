@@ -414,5 +414,5 @@
   });
 
   log("Ready. Load a Bruce .js app.");
-  log("Choose Key Decoding, Magic 8 Ball, Morse Code, or Custom URL, then click Load app.");
+  log("Choose an app or Custom URL, then click Load app.");
 })();
