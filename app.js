@@ -48,7 +48,10 @@
       parseFloat(bezelStyle.paddingLeft) + parseFloat(bezelStyle.paddingRight);
     // Measure the workspace, not the shrink-wrapped device, to avoid resize feedback.
     const available = Math.min(760, columnWidth) - frameWidth;
-    const scale = Math.max(1, Math.floor(available * ratio / W));
+    const pixelScale = available * ratio / W;
+    const scale = window.matchMedia("(max-width: 650px)").matches
+      ? Math.max(1, pixelScale)
+      : Math.max(1, Math.floor(pixelScale));
     const deviceWidth = W * scale / ratio + frameWidth;
     deviceColumn.style.width = `${deviceWidth}px`;
     workspace.style.setProperty("--device-width", `${deviceWidth}px`);
