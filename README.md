@@ -21,6 +21,11 @@ Open [localhost:8080](http://localhost:8080)
 Use the included server for `SharedArrayBuffer` support. Opening `index.html`
 directly or using `python3 -m http.server` will not work.
 
+The browser UI is in `app.js`; the standalone `emulator-worker.js` is a
+**classic worker**, not a module. It keeps Bruce globals and direct script
+`eval` in the worker scope. `pixel-renderer.js` draws both the display and
+offscreen sprites. Serve these files together from the same origin.
+
 ## Deploy to Cloudflare Pages
 
 The whole emulator runs in the browser and can be hosted on Cloudflare Pages'
@@ -37,15 +42,18 @@ variables are needed in production.
 | Framework preset | None |
 | Production branch | `main` |
 | Root directory | Default (repository root) |
-| Build command | `mkdir -p dist && cp index.html style.css app.js pixel-renderer.js _headers dist/` |
+| Build command | `rm -rf dist && mkdir -p dist && cp index.html style.css app.js emulator-worker.js pixel-renderer.js _headers dist/` |
 | Build output directory | `dist` |
 | Environment variables | None |
 
 4. Select **Save and Deploy**, then open the generated HTTPS `*.pages.dev` URL.
    Subsequent pushes to `main` deploy automatically.
 
-The build command only copies the browser assets, so local server and IDE files
-are not published. The `_headers` file must be in the deployment output: it sets
+The build command recreates the generated `dist/` directory and copies only the
+six browser assets listed above, so stale assets, source documentation,
+screenshots, local server, and IDE files are not published. Do not store anything
+manually in `dist/`; it is ignored by Git and replaced on each build.
+The `_headers` file must be in the deployment output: it sets
 `Cross-Origin-Opener-Policy: same-origin` and
 `Cross-Origin-Embedder-Policy: require-corp`, which enable the cross-origin
 isolation required by `SharedArrayBuffer`. Cloudflare provides HTTPS.
@@ -54,11 +62,27 @@ Custom script URLs must use HTTPS and allow CORS from the deployed site.
 Hosting on Pages does not bypass restrictions imposed by script hosts; download
 and upload the script locally if its URL is blocked.
 
+## Deploy to Cloudflare Workers Static Assets
+
+The included `wrangler.toml` uses the same curated `dist/` output and declares
+the same copy command under `[build]`. With Wrangler available, `wrangler dev`
+or `wrangler deploy` runs that command before serving or uploading assets.
+No Python server or new project dependencies are required. The worker script
+and isolation `_headers` are included; the repository root is never the asset
+directory. If another deployment tool skips Wrangler's build step, run the
+build command from the Pages table first and publish only `dist/`.
+
 ## Usage
 
 - Select **Key Decoding**, **Magic 8 Ball**, **Morse Code**, or an app under **Apps from Bruce App Store**, then click the play icon.
 - Use **Custom URL** or the upload icon to load another `.js` app.
-- **Stop** ends the app; the camera icon saves the display as a **640 x 340 PNG**.
+- The newest URL or file load wins; superseded fetches/file reads are cancelled
+  and cannot start an older script. Read failures appear in the runtime console.
+- **Stop** ends the app and cancels any pending load; the camera icon saves the
+  display as a **640 x 340 PNG**.
+- The runtime console retains the newest **500 entries**, up to **100,000
+  characters** total; individual entries longer than **10,000 characters**
+  are truncated. **Clear log** also clears the retained entries.
 
 Presets require internet access. If CORS blocks a URL, download the script
 and upload it locally.
@@ -76,34 +100,33 @@ On-screen buttons provide the same controls.
 
 ## Supported features
 
-- `require("display")`
-- `require("keyboard")`
-- `keyboard.setLongPress(enabled)` held-control polling (disabled by default)
-- `keyboard.getKeysPressed()` currently held Cardputer keys
-- `require("dialog")` choice menus, blocking messages, info/success/error messages, and virtual file picker
-- `keyboard.keyboard(initialText, maxLength, prompt)` browser text input (up to 4096 characters)
-- `keyboard.numKeyboard()` uses the same argument forms and requests digits-only input; browser prompts are not password-masked, even when the script requests masking. Use throwaway PINs/passwords only.
-- `require("serial")` print/println to the runtime console, timeout-only `readln(timeoutMs = 10000)`, and `cmd("storage remove <path>")` for virtual files; other commands log a warning and return `false`
-- `require("audio")` tone playback and stop
-- `require("device")` name, board, model, Bruce version, battery, heap, and EEPROM information
-- `require("battery")` compatibility module with `level()` returning the same simulated 100% reading as `device.getBattery()`
-- `require("gpio")` simulated `analogWrite(pin, value)` for ESP32-S3 pin numbers 0-48 and PWM values 0-255; changed values are logged only, with no physical output. Other GPIO methods are not supported.
-- `dialog.prompt(title, maxLength, initialText)` uses browser text input for apps such as RGB Controller.
-- `dialog.createTextViewer(text, options)` supports wrapped text, `setText`, `clear`, `draw`, `scrollUp`, `scrollDown`, `scrollToLine`, `getLine`, `getMaxLines`, `getVisibleText`, and `close`. Options include `fontSize`, `startX`, `startY`, `width`, `height`, and `indentWrappedLines`.
-- `require("wifi")` IP and MAC address getters and `connected()` (always `false`, with a one-time notice); `connectDialog()` logs that connection is unavailable and returns `false`. `httpFetch()` logs and throws an explicit unsupported-operation error without sending a request.
-- `require("ir")` simulated `transmit(data, protocol = "NEC", bits = 32)` with hexadecimal data; transmissions are logged and return `true`, but no physical infrared signal is sent. `read(timeoutSeconds = 10)` and `readRaw(timeoutSeconds = 10)` return an empty string after the timeout and log the lack of physical input once. File transmission is not supported.
-- `require("badusb")` simulated `setup`, `print`, `println`, `press`, `pressRaw`, `hold`, `release`, and `releaseAll`; call `setup()` first. Actions are logged only: no USB device is created and no host keystrokes are sent. `runFile` logs that it is unsupported and returns `false`.
-- `require("subghz")` simulated `setFrequency(MHz)` and `transmit(hexData, frequencyHz = 433920000, te = 174, count = 10)`; transmissions are logged only and return `true`. `read`/`readRaw` return an empty string after their timeout in seconds (default 10), with a one-time notice that no physical input is available. `transmitFile` logs that it is unsupported and returns `false`.
-- `require("storage")` in-memory files, directory listings (`readdir`, including `withFileTypes`), and space information, with string paths or `{fs: "sd" | "littlefs", path: "/file"}`; virtual files reset when the app restarts
-- `display.getRotation()` and `display.getBrightness()`
-- Legacy globals `setTextSize(size)` and `setTextColor(color)` share the display module's text state
-- `display.createSprite()` offscreen drawing and push (paced at up to 30 FPS)
-- `delay(ms)`
-- `now()` and `random()`, `random(max)`, `random(min, max)` (integer, upper bound exclusive)
-- `gc()` compatibility global; logs once that browser garbage collection is automatic and cannot be forced
-- `__dirpath` is the virtual `/scripts` directory; `__filepath` includes the loaded script's filename (URL filenames are decoded). These paths do not access the host filesystem.
-- CommonJS `exports` and `module.exports` are available for compiled script compatibility; `require()` still resolves only the emulator's supported Bruce modules.
-- Bruce globals `to_string(value)` and `parse_int(value)`; `parse_int` uses numeric conversion like the firmware, rather than JavaScript's `parseInt`
-- `print()` / `println()`
-- Display drawing, text, colors, XBitmap
-- Blocking Bruce-style polling loops
+| Category | API | Support and limitations |
+| --- | --- | --- |
+| Display | `require("display")` | Text, shapes, colors, bitmaps, and XBitmap |
+| Display | `display.getRotation()`, `display.getBrightness()` | Simulated display settings |
+| Sprites | `display.createSprite()` | Offscreen drawing and push, paced at up to 30 FPS |
+| Text | Display and sprite `print()` / `println()` | Independent cursor state; `print()` does not advance it, while `println()` advances only Y by `8 * textSize`. Sprites inherit display text color/size, starting at `(0, 0)` with left/top alignment. |
+| Text | `setTextSize(size)`, `setTextColor(color)` | Legacy globals update the display's text state |
+| Gradients | `drawFillRectGradient(x, y, width, height, firstColor, secondColor, direction)` | Display and sprite fallback uses only `firstColor` |
+| Keyboard | `require("keyboard")`, `keyboard.setLongPress(enabled)`, `keyboard.getKeysPressed()` | Held-control polling (disabled by default) and held Cardputer keys |
+| Input | `keyboard.keyboard(initialText, maxLength, prompt)`, `keyboard.numKeyboard()` | Browser input up to 4096 characters; numeric entry requests digits only. Prompts are not password-masked: use throwaway PINs/passwords only. |
+| Dialogs | `require("dialog")` | Choice menus, blocking messages, info/success/error messages, and virtual file picker |
+| Dialogs | `dialog.prompt(title, maxLength, initialText)` | Browser text input |
+| Text viewer | `dialog.createTextViewer(text, options)` | Wrapping; `setText`, `clear`, `draw`, `scrollUp`, `scrollDown`, `scrollToLine`, `getLine`, `getMaxLines`, `getVisibleText`, `close`. Options: `fontSize`, `startX`, `startY`, `width`, `height`, `indentWrappedLines`. |
+| Serial | `require("serial")` | Console print/println, timeout-only `readln(timeoutMs = 10000)`, and `cmd("storage remove <path>")`. Other commands log a warning and return `false`. |
+| Audio | `require("audio")` | Tone playback and stop |
+| Device | `require("device")` | Simulated name, board, model, Bruce version, battery, heap, and EEPROM information |
+| Battery | `require("battery")`, `battery.level()` | Same simulated 100% reading as `device.getBattery()` |
+| GPIO | `require("gpio")`, `gpio.analogWrite(pin, value)` | Pins 0-48, PWM values 0-255; changed values logged only, no physical output. Other GPIO methods unsupported. |
+| Wi-Fi | `require("wifi")` | IP/MAC getters; `connected()` always returns `false` with a one-time notice. `connectDialog()` logs and returns `false`; `httpFetch()` logs and throws without sending a request. |
+| IR | `require("ir")`, `transmit(data, protocol = "NEC", bits = 32)` | Hexadecimal transmissions logged only, returning `true`; no physical signal. `read(timeoutSeconds = 10)` / `readRaw(timeoutSeconds = 10)` return empty strings after timeout with a one-time notice. File transmission unsupported. |
+| BadUSB | `require("badusb")` | Simulated `setup`, `print`, `println`, `press`, `pressRaw`, `hold`, `release`, `releaseAll`; call `setup()` first. Logged only, no USB device or host keystrokes. `runFile` logs and returns `false`. |
+| Sub-GHz | `require("subghz")`, `setFrequency(MHz)`, `transmit(hexData, frequencyHz = 433920000, te = 174, count = 10)` | Transmissions logged only, returning `true`. Default transmit frequency is independent of `setFrequency`, which validates/logs tuning only. `read` / `readRaw` return empty strings after timeout (seconds, default 10) with a one-time notice. `transmitFile` logs and returns `false`. |
+| Storage | `require("storage")` | In-memory files, `readdir` (including `withFileTypes`), and space information. String paths or `{fs: "sd" \| "littlefs", path: "/file"}`; files reset on app restart. |
+| Timing | `delay(ms)`, `now()` | Blocking Bruce-style polling loops |
+| Random | `random()`, `random(max)`, `random(min, max)` | Integers; upper bound exclusive |
+| Garbage collection | `gc()` | Logs once that browser collection is automatic and cannot be forced |
+| Script paths | `__dirpath`, `__filepath` | Virtual `/scripts` directory and loaded filename (URL filenames decoded); no host filesystem access |
+| CommonJS | `exports`, `module.exports` | Compiled script compatibility; `require()` resolves supported Bruce modules only |
+| Conversion | `to_string(value)`, `parse_int(value)` | Firmware-style numeric conversion, not JavaScript's `parseInt` |
+| Logging | `print()`, `println()` | Runtime console output |

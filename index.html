@@ -121,42 +121,25 @@
 
         <details>
           <summary>Supported features</summary>
-          <ul>
-            <li><code>require("display")</code></li>
-            <li><code>require("keyboard")</code></li>
-            <li><code>require("dialog")</code></li>
-            <li><code>require("serial")</code></li>
-            <li><code>require("audio")</code></li>
-            <li><code>require("device")</code></li>
-            <li><code>require("battery")</code></li>
-            <li><code>require("gpio")</code></li>
-            <li><code>require("wifi")</code></li>
-            <li><code>require("ir")</code></li>
-            <li><code>require("badusb")</code></li>
-            <li><code>require("subghz")</code></li>
-            <li><code>require("storage")</code></li>
-            <li><code>keyboard.setLongPress()</code>, <code>keyboard.getKeysPressed()</code></li>
-            <li><code>keyboard.keyboard()</code>, <code>keyboard.numKeyboard()</code></li>
-            <li><code>dialog.prompt()</code>, <code>dialog.createTextViewer()</code></li>
-            <li><code>display.getRotation()</code>, <code>display.getBrightness()</code></li>
-            <li><code>display.createSprite()</code></li>
-            <li><code>setTextSize()</code>, <code>setTextColor()</code></li>
-            <li><code>delay(ms)</code></li>
-            <li><code>now()</code>, <code>random()</code>, <code>random(max)</code>, <code>random(min, max)</code></li>
-            <li><code>gc()</code></li>
-            <li><code>__dirpath</code>, <code>__filepath</code></li>
-            <li><code>exports</code>, <code>module.exports</code></li>
-            <li><code>to_string()</code>, <code>parse_int()</code></li>
-            <li><code>print()</code> / <code>println()</code></li>
-            <li>Display drawing, text, colors, XBitmap</li>
-            <li>Blocking Bruce-style polling loops</li>
-          </ul>
+          <table class="features-table">
+            <thead>
+              <tr><th scope="col">Category</th><th scope="col">Features</th></tr>
+            </thead>
+            <tbody>
+              <tr><th scope="row">Display</th><td>Text, shapes, bitmaps, sprites</td></tr>
+              <tr><th scope="row">Input</th><td>Keyboard, prompts, dialogs, text viewers</td></tr>
+              <tr><th scope="row">Runtime</th><td>Audio tones, logging, in-memory storage</td></tr>
+              <tr><th scope="row">Simulated APIs</th><td>Device, battery, GPIO, IR, BadUSB, Sub-GHz</td></tr>
+              <tr><th scope="row">Compatibility</th><td>Bruce globals, CommonJS, blocking polling loops</td></tr>
+            </tbody>
+          </table>
+          <p><a href="https://github.com/SasPes/bruce-js-app-emulator#supported-features">Full API support and limitations in the README</a></p>
         </details>
       </aside>
     </section>
   </main>
 
   <script src="pixel-renderer.js"></script>
-  <script src="app.js?v=5"></script>
+  <script src="app.js?v=6"></script>
 </body>
 </html>
