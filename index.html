@@ -31,7 +31,6 @@
               <optgroup label="Apps from Bruce App Store">
                 <option value="https://raw.githubusercontent.com/sloth632/Cricket-app/5210a794005d897f8ccaf502f0aa37dea7228b85/Cricket.js">Cricket</option>
                 <option value="https://raw.githubusercontent.com/BruceDevices/firmware/c9d3731b38e67598e5b66a6488d8b12aeb8bf4dd/sd_files/interpreter/dtmf.js">DTMF</option>
-                <option value="https://raw.githubusercontent.com/MiskaJuro/bruce-applications/df54096328c96f9e373c909f8f9dfa2e9f871cfc/Morse-Code/morse-code.js">Morse Code</option>
                 <option value="https://raw.githubusercontent.com/sloth632/Nokia-app/a4dcf73e754523cd54c0b2fd00c9fdc972126c3b/Nokia.js">Nokia</option>
                 <option value="https://raw.githubusercontent.com/emericklaw/Bruce-Tone-Generator-App/3d3f98cd55a9671a1a0879b980b3a06356a81172/Tone%20Generator.js">Tone Generator</option>
                 <option value="https://raw.githubusercontent.com/BruceDevices/firmware/c9d3731b38e67598e5b66a6488d8b12aeb8bf4dd/sd_files/interpreter/M5stickcplus2_arcade-games.js">M5StickC Plus 2 Arcade Games</option>
@@ -125,10 +124,29 @@
           <ul>
             <li><code>require("display")</code></li>
             <li><code>require("keyboard")</code></li>
-            <li><code>require("dialog")</code> success messages and virtual file picker</li>
-            <li><code>require("audio")</code> tone playback and stop</li>
-            <li><code>display.createSprite()</code> offscreen drawing and push</li>
+            <li><code>require("dialog")</code></li>
+            <li><code>require("serial")</code></li>
+            <li><code>require("audio")</code></li>
+            <li><code>require("device")</code></li>
+            <li><code>require("battery")</code></li>
+            <li><code>require("gpio")</code></li>
+            <li><code>require("wifi")</code></li>
+            <li><code>require("ir")</code></li>
+            <li><code>require("badusb")</code></li>
+            <li><code>require("subghz")</code></li>
+            <li><code>require("storage")</code></li>
+            <li><code>keyboard.setLongPress()</code>, <code>keyboard.getKeysPressed()</code></li>
+            <li><code>keyboard.keyboard()</code>, <code>keyboard.numKeyboard()</code></li>
+            <li><code>dialog.prompt()</code>, <code>dialog.createTextViewer()</code></li>
+            <li><code>display.getRotation()</code>, <code>display.getBrightness()</code></li>
+            <li><code>display.createSprite()</code></li>
+            <li><code>setTextSize()</code>, <code>setTextColor()</code></li>
             <li><code>delay(ms)</code></li>
+            <li><code>now()</code>, <code>random()</code>, <code>random(max)</code>, <code>random(min, max)</code></li>
+            <li><code>gc()</code></li>
+            <li><code>__dirpath</code>, <code>__filepath</code></li>
+            <li><code>exports</code>, <code>module.exports</code></li>
+            <li><code>to_string()</code>, <code>parse_int()</code></li>
             <li><code>print()</code> / <code>println()</code></li>
             <li>Display drawing, text, colors, XBitmap</li>
             <li>Blocking Bruce-style polling loops</li>
@@ -139,6 +157,6 @@
   </main>
 
   <script src="pixel-renderer.js"></script>
-  <script src="app.js"></script>
+  <script src="app.js?v=5"></script>
 </body>
 </html>
