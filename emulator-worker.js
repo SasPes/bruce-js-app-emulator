@@ -699,6 +699,9 @@ Object.assign(globalThis, {
 onmessage = function(e) {
   if (e.data.type==="start") {
     input = new Int32Array(e.data.sab);
+    const w = e.data.width || 320, h = e.data.height || 170;
+    Object.assign(display, drawingApi(w, h, displayState, {type:"draw"}));
+    display.getRotation = () => h > w ? 0 : 1;
     __filepath = __dirpath + "/" + (e.data.name || "index.js");
     try {
       // Bruce's current scripting environment is ES5-oriented; the emulator

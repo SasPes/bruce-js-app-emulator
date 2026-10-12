@@ -15,7 +15,23 @@
       </div>
       <div class="header-meta">
         <p>Created by <a href="https://github.com/SasPes">SasPes</a></p>
-        <div class="badge">320 × 170</div>
+        <div class="resolution">
+          <select id="resolution" aria-label="Screen resolution">
+            <option value="170x320">170 × 320</option>
+            <option value="240x135">240 × 135</option>
+            <option value="240x240">240 × 240</option>
+            <option value="320x170" selected>320 × 170</option>
+            <option value="320x240">320 × 240</option>
+            <option value="480x222">480 × 222</option>
+            <option value="480x320">480 × 320</option>
+            <option value="custom">Custom</option>
+          </select>
+          <span id="customResolution" hidden>
+            <input id="customW" type="number" min="1" max="1024" step="1" value="320" aria-label="Custom width">
+            ×
+            <input id="customH" type="number" min="1" max="1024" step="1" value="170" aria-label="Custom height">
+          </span>
+        </div>
       </div>
     </header>
 

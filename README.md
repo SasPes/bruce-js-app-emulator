@@ -1,7 +1,8 @@
 # Bruce LILYGO T-Embed CC1101 Web Emulator
 
 A browser emulator for Bruce JavaScript apps on the LILYGO T-Embed CC1101,
-with a **320 x 170** pixel display.
+with a **320 x 170** pixel display by default. The resolution can be changed from the
+dropdown in the header, including a custom width and height.
 
 **Live emulator:** [bruce-js-app-emulator.saspes.workers.dev](https://bruce-js-app-emulator.saspes.workers.dev/)
 

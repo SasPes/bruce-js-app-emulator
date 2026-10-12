@@ -1,10 +1,10 @@
 (() => {
   "use strict";
 
-  const W = 320, H = 170;
+  let W = 320, H = 170;
   const canvas = document.getElementById("screen");
   const ctx = canvas.getContext("2d", { alpha: false });
-  const renderer = new PixelRenderer(ctx, W, H);
+  let renderer = new PixelRenderer(ctx, W, H);
   let renderFrame = null;
   const logEl = document.getElementById("log");
   const MAX_LOG_ENTRIES = 500;
@@ -71,6 +71,45 @@
   displayResizeObserver.observe(device);
   window.addEventListener("resize", updateDisplaySize);
   updateDisplaySize();
+
+  const resolutionEl = document.getElementById("resolution");
+  const customBoxEl = document.getElementById("customResolution");
+  const customWEl = document.getElementById("customW");
+  const customHEl = document.getElementById("customH");
+  const screenshotBtn = document.getElementById("screenshot");
+  function applyResolution() {
+    let w, h;
+    if (resolutionEl.value === "custom") {
+      w = Math.trunc(Number(customWEl.value));
+      h = Math.trunc(Number(customHEl.value));
+      if (!(w >= 1 && w <= 1024 && h >= 1 && h <= 1024)) return;
+    } else {
+      [w, h] = resolutionEl.value.split("x").map(Number);
+    }
+    if (w === W && h === H) return;
+    // Running worker holds the old size; stop it before resizing.
+    if (worker) stopRuntime(false);
+    W = w; H = h;
+    canvas.width = W;
+    canvas.height = H;
+    renderer = new PixelRenderer(ctx, W, H);
+    screenshotBtn.title = `Save screenshot (${W * 2} x ${H * 2})`;
+    clearScreen();
+    updateDisplaySize();
+    log(`Resolution set to ${W} x ${H}.`);
+  }
+  resolutionEl.addEventListener("change", () => {
+    const custom = resolutionEl.value === "custom";
+    if (custom) {
+      // Custom starts from the current resolution.
+      customWEl.value = W;
+      customHEl.value = H;
+    }
+    customBoxEl.hidden = !custom;
+    applyResolution();
+  });
+  customWEl.addEventListener("change", applyResolution);
+  customHEl.addEventListener("change", applyResolution);
 
   document.getElementById("screenshot").onclick = () => {
     renderer.present();
@@ -305,7 +344,7 @@
       log(`Worker error: ${e.message}`);
     };
     try {
-      runningWorker.postMessage({type:"start", code, sab, name:name || "index.js"});
+      runningWorker.postMessage({type:"start", code, sab, name:name || "index.js", width:W, height:H});
     } catch (e) {
       stopRuntime(false);
       throw e;
