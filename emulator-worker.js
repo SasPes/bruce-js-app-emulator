@@ -251,12 +251,15 @@ const storage = {
   write:(name,value,mode)=>{
     const key = storageKey(name);
     storageMap[key] = (mode === "append" ? storageMap[key] || "" : "") + String(value);
+    // The page persists the files and shows them in its storage browser.
+    postMessage({type:"storageWrite", key:key, value:storageMap[key]});
     return true;
   },
   remove:(name)=>{
     const key = storageKey(name);
     const exists = key in storageMap;
     delete storageMap[key];
+    if (exists) postMessage({type:"storageRemove", key:key});
     return exists;
   },
   spaceLittleFS:()=>storageSpace("littlefs",2048),
@@ -328,25 +331,136 @@ const device = {
   getEEPROMSize:()=>512
 };
 
+// Simulated station. The network chosen in the page selector (input slot 4: 0 = none,
+// n = network n) is the one the device is "connected" to, with no connect call needed.
+// httpFetch uses the browser's own connection. Nothing touches real Wi-Fi hardware.
+let WIFI_NETWORKS = [];
+function wifiCurrent() {
+  const selected = Atomics.load(input,4);
+  return selected >= 1 && selected <= WIFI_NETWORKS.length ? WIFI_NETWORKS[selected - 1] : null;
+}
+function wifiSelect(index) {
+  Atomics.store(input,4,index);
+  postMessage({type:"wifiSelect", index:index});
+}
 const wifi = {
   connectDialog:()=>{
-    print("Wi-Fi connection is unavailable in emulator; remaining disconnected");
-    return false;
-  },
-  httpFetch:()=>{
-    const message = "wifi.httpFetch is not supported in emulator; no network request was sent";
-    print(message);
-    throw new Error(message);
-  },
-  connected:()=>{
-    if (!unavailableInputs.has("wifi.connected")) {
-      print("wifi.connected: simulated Wi-Fi is disconnected; network operations are unavailable");
-      unavailableInputs.add("wifi.connected");
+    const current = wifiCurrent();
+    if (!current) {
+      print("Wi-Fi: no network selected in the emulator");
+      return false;
     }
-    return false;
+    return true;
   },
-  getIPAddress:()=>"0.0.0.0",
-  getMACAddress:()=>"02:00:00:00:00:01"
+  connect:(ssid,timeout = 10,password)=>{
+    if (typeof ssid !== "string" || !ssid) {
+      throw new TypeError("wifi.connect requires an SSID string");
+    }
+    if (!Number.isFinite(timeout) || timeout < 0) {
+      throw new RangeError("wifi.connect timeout must be a non-negative number of seconds");
+    }
+    if (password !== undefined && typeof password !== "string") {
+      throw new TypeError("wifi.connect password must be a string");
+    }
+    const index = WIFI_NETWORKS.findIndex(network=>network.SSID === ssid);
+    if (index < 0) {
+      print("Wi-Fi: network not found: " + ssid);
+      return false;
+    }
+    wifiSelect(index + 1);
+    return true;
+  },
+  disconnect:()=>{
+    if (wifiCurrent()) wifiSelect(0);
+    return true;
+  },
+  scan:()=>WIFI_NETWORKS.map(network=>({...network})),
+  connected:()=>wifiCurrent() !== null,
+  getIPAddress:()=>wifi.connected() ? "192.168.1.100" : "0.0.0.0",
+  getMACAddress:()=>"02:00:00:00:00:01",
+  httpFetch:(url,options = {})=>{
+    if (typeof url !== "string" || !url) {
+      throw new TypeError("wifi.httpFetch requires a URL string");
+    }
+    if (options === null || typeof options !== "object") {
+      throw new TypeError("wifi.httpFetch options must be an object");
+    }
+    if (!wifi.connected()) {
+      throw new Error("wifi.httpFetch: Wi-Fi is not connected");
+    }
+    const method = String(options.method || "GET").toUpperCase();
+    const request = new XMLHttpRequest();
+    // Input slot 16 is set from the page: 1 relays through the server's /proxy (no CORS limits).
+    const useProxy = Atomics.load(input,16) === 1;
+    const given = options.headers || {};
+    try {
+      if (useProxy) {
+        request.open(method,"/proxy?url=" + encodeURIComponent(url),false);
+        const sent = {};
+        for (const name of Object.keys(given)) sent[name] = String(given[name]);
+        request.setRequestHeader("X-Proxy-Headers",JSON.stringify(sent));
+      } else {
+        request.open(method,url,false);
+        for (const name of Object.keys(given)) {
+          try {
+            request.setRequestHeader(name,String(given[name]));
+          } catch (e) {
+            print("wifi.httpFetch: browser does not allow header " + name);
+          }
+        }
+      }
+      if (options.save) request.overrideMimeType("text/plain; charset=x-user-defined");
+      request.send(options.body === undefined || method === "GET" || method === "HEAD"
+        ? null : String(options.body));
+    } catch (e) {
+      print(useProxy
+        ? "wifi.httpFetch failed: could not reach the emulator's /proxy endpoint"
+        : "wifi.httpFetch failed (network error or blocked by CORS): " + url);
+      return {status:0, ok:false, body:"", headers:{}};
+    }
+    if (useProxy && request.getResponseHeader("X-Proxy-Error")) {
+      print("wifi.httpFetch failed: proxy could not reach " + url);
+      return {status:0, ok:false, body:"", headers:{}};
+    }
+    const headers = {};
+    for (const line of request.getAllResponseHeaders().trim().split(/\r?\n/)) {
+      const split = line.indexOf(":");
+      if (split > 0) headers[line.slice(0,split).trim().toLowerCase()] = line.slice(split + 1).trim();
+    }
+    let body = request.responseText;
+    // options.save {fs, path, mode} writes the response to storage instead of returning it.
+    if (options.save) {
+      const ok = request.status >= 200 && request.status < 300;
+      if (ok) {
+        // x-user-defined gives one character per byte (0xF780-0xF7FF for bytes >= 0x80).
+        const bytes = Uint8Array.from(body, character=>character.charCodeAt(0) & 0xff);
+        let text;
+        try {
+          text = new TextDecoder("utf-8",{fatal:true}).decode(bytes);
+        } catch (e) {
+          // Binary data cannot be kept as text; store one character per byte.
+          text = Array.from(bytes, byte=>String.fromCharCode(byte)).join("");
+        }
+        storage.write(options.save,text,options.save.mode);
+        return {status:request.status, ok:true, body:"", length:bytes.length, headers};
+      }
+      return {status:request.status, ok:false, body:"", length:0, headers};
+    }
+    // responseType "json" returns the parsed value; unparseable bodies stay as text.
+    if (options.responseType === "json") {
+      try {
+        body = JSON.parse(body);
+      } catch (e) {
+        print("wifi.httpFetch: response is not valid JSON");
+      }
+    }
+    return {
+      status:request.status,
+      ok:request.status >= 200 && request.status < 300,
+      body,
+      headers
+    };
+  }
 };
 
 const gpioValues = new Map();
@@ -699,6 +813,9 @@ Object.assign(globalThis, {
 onmessage = function(e) {
   if (e.data.type==="start") {
     input = new Int32Array(e.data.sab);
+    WIFI_NETWORKS = e.data.wifiNetworks || [];
+    // Files saved earlier (kept by the page), so apps see the same storage on every run.
+    Object.assign(storageMap, e.data.storage || {});
     const w = e.data.width || 320, h = e.data.height || 170;
     Object.assign(display, drawingApi(w, h, displayState, {type:"draw"}));
     display.getRotation = () => h > w ? 0 : 1;
@@ -709,7 +826,10 @@ onmessage = function(e) {
       eval(e.data.code);
       postMessage({type:"done"});
     } catch(err) {
-      postMessage({type:"error", text:err && (err.stack || err.message) || String(err)});
+      // Firefox stacks omit the message, so lead with it.
+      const stack = err && err.stack || "";
+      const head = err && err.message ? (err.name || "Error") + ": " + err.message : String(err);
+      postMessage({type:"error", text:stack.includes(head) ? stack : head + (stack ? "\n" + stack : "")});
     }
   }
 };

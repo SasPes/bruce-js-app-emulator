@@ -7,6 +7,14 @@
   let renderer = new PixelRenderer(ctx, W, H);
   let renderFrame = null;
   const logEl = document.getElementById("log");
+  const consolePanel = logEl.parentElement;
+  const consoleToggle = document.getElementById("toggleConsole");
+  consoleToggle.onclick = () => {
+    const collapsed = consolePanel.classList.toggle("console-collapsed");
+    consoleToggle.setAttribute("aria-expanded", String(!collapsed));
+    consoleToggle.textContent = (collapsed ? "▶" : "▼") + " Runtime console";
+    if (!collapsed) logEl.scrollTop = logEl.scrollHeight;
+  };
   const MAX_LOG_ENTRIES = 500;
   const MAX_LOG_CHARS = 100000;
   const MAX_LOG_ENTRY_CHARS = 10000;
@@ -55,6 +63,36 @@
     }
   }
   loadStoreApps();
+  // Simulated networks; the selected index goes to the worker through input slot 4 (0 = none).
+  const WIFI_NETWORKS = [
+    {SSID:"Emulator-WiFi", encryptionType:"WPA2_PSK", RSSI:-45, BSSID:"02:00:00:00:00:01", channel:6},
+    {SSID:"Guest-Network", encryptionType:"OPEN", RSSI:-60, BSSID:"02:00:00:00:00:02", channel:1},
+    {SSID:"Office-5G", encryptionType:"WPA2_PSK", RSSI:-72, BSSID:"02:00:00:00:00:03", channel:11},
+    {SSID:"Neighbour", encryptionType:"WPA3_PSK", RSSI:-85, BSSID:"02:00:00:00:00:04", channel:3}
+  ];
+  const wifiNetworkEl = document.getElementById("wifiNetwork");
+  wifiNetworkEl.add(new Option("Wi-Fi: none", "0"));
+  WIFI_NETWORKS.forEach((network, index) => {
+    wifiNetworkEl.add(new Option(`Wi-Fi: ${network.SSID}`, String(index + 1)));
+  });
+  wifiNetworkEl.value = "1";
+  function syncWifiNetwork() {
+    if (inputView) Atomics.store(inputView, 4, Number(wifiNetworkEl.value));
+  }
+  wifiNetworkEl.addEventListener("change", () => {
+    syncWifiNetwork();
+    const network = WIFI_NETWORKS[Number(wifiNetworkEl.value) - 1];
+    log(network ? `Wi-Fi connected to ${network.SSID}` : "Wi-Fi disconnected");
+  });
+  // HTTP mode goes to the worker through input slot 16 (0 = direct, 1 = server /proxy).
+  const httpModeEl = document.getElementById("httpMode");
+  function syncHttpMode() {
+    if (inputView) Atomics.store(inputView, 16, Number(httpModeEl.value));
+  }
+  httpModeEl.addEventListener("change", () => {
+    syncHttpMode();
+    log(httpModeEl.value === "1" ? "HTTP requests use the server proxy" : "HTTP requests are sent directly (CORS applies)");
+  });
   let worker = null;
   let inputView = null;
   let loadVersion = 0;
@@ -87,7 +125,8 @@
     const deviceWidth = W * scale / ratio + frameWidth;
     deviceColumn.style.width = `${deviceWidth}px`;
     workspace.style.setProperty("--device-width", `${deviceWidth}px`);
-    workspace.parentElement.style.setProperty("--header-width", `${deviceWidth * columns + gap * (columns - 1)}px`);
+    // Side by side the header spans the full width; stacked it matches the device.
+    workspace.parentElement.style.setProperty("--header-width", columns === 2 ? "100%" : `${deviceWidth}px`);
     canvas.style.width = `${W * scale / ratio}px`;
     canvas.style.height = `${H * scale / ratio}px`;
     canvas.style.transform = "none";
@@ -173,8 +212,10 @@
   // Keyboard slots use bit 1 for a queued press and bit 2 for a held control.
   // Slots 5-7 are reserved for audio synchronization and worker wakeups.
   // Slots 8-15 hold character codes of held Cardputer keys for getKeysPressed().
-  const sab = new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT * 16);
+  const sab = new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT * 17);
   inputView = new Int32Array(sab);
+  syncWifiNetwork();
+  syncHttpMode();
   const heldKeys = new Map();
   const heldPointers = new Map();
   const charSlots = new Map();
@@ -296,7 +337,261 @@
     } catch (e) { log("Render error: " + e.message); }
   }
 
+  // Virtual storage: keys are "sd:/path" or "littlefs:/path" with text contents. The page owns
+  // the files (kept in localStorage); a worker gets a copy when it starts and reports changes.
+  const STORAGE_KEY = "bruce-emulator-storage";
+  const storageFiles = Object.create(null);
+  try {
+    Object.assign(storageFiles, JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}"));
+  } catch (e) {}
+  const storageTreeEl = document.getElementById("storageTree");
+  const storageEmptyEl = document.getElementById("storageEmpty");
+  const storageSummaryEl = document.getElementById("storageSummary");
+  const storageEditorEl = document.getElementById("storageEditor");
+  const storageEditorPathEl = document.getElementById("storageEditorPath");
+  const storageEditorTextEl = document.getElementById("storageEditorText");
+  const storageFsEl = document.getElementById("storageFs");
+  const storageUploadInputEl = document.getElementById("storageUploadInput");
+  let storageEditingKey = null;
+  let storageRenderFrame = null;
+  let storageSaveWarned = false;
+
+  function saveStorage() {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(storageFiles));
+    } catch (e) {
+      if (!storageSaveWarned) {
+        storageSaveWarned = true;
+        log("Storage is not being kept between visits (browser storage is full or blocked).");
+      }
+    }
+  }
+  function scheduleStorageRender() {
+    if (storageRenderFrame !== null) return;
+    storageRenderFrame = requestAnimationFrame(() => {
+      storageRenderFrame = null;
+      renderStorage();
+    });
+  }
+  let storageSaveTimer = null;
+  function storageChanged() {
+    // Apps may write in tight loops; batch the persistence and rendering.
+    if (storageSaveTimer === null) {
+      storageSaveTimer = setTimeout(() => {
+        storageSaveTimer = null;
+        saveStorage();
+      }, 300);
+    }
+    scheduleStorageRender();
+  }
+  window.addEventListener("pagehide", () => {
+    if (storageSaveTimer !== null) {
+      clearTimeout(storageSaveTimer);
+      storageSaveTimer = null;
+      saveStorage();
+    }
+  });
+  function storageBytes(text) {
+    return new TextEncoder().encode(text).length;
+  }
+  function formatBytes(bytes) {
+    return bytes < 1024 ? `${bytes} B` : `${(bytes / 1024).toFixed(1)} KB`;
+  }
+  function describeStorageKey(key) {
+    const split = key.indexOf(":");
+    return {label: key.slice(0, split) === "sd" ? "SD" : "LittleFS", path: key.slice(split + 1)};
+  }
+  function storageButton(text, onClick, extraClass) {
+    const button = document.createElement("button");
+    button.textContent = text;
+    button.className = "text-button" + (extraClass ? " " + extraClass : "");
+    button.onclick = onClick;
+    return button;
+  }
+  // Directories the user collapsed, as "fs:/dir" keys; everything else starts expanded.
+  const collapsedDirs = new Set();
+  function buildStorageTree() {
+    const roots = new Map([["sd", {children: new Map()}], ["littlefs", {children: new Map()}]]);
+    for (const key of Object.keys(storageFiles)) {
+      const split = key.indexOf(":");
+      const fs = key.slice(0, split);
+      if (!roots.has(fs)) roots.set(fs, {children: new Map()});
+      let node = roots.get(fs);
+      const parts = key.slice(split + 1).split("/").filter(Boolean);
+      parts.forEach((part, index) => {
+        if (!node.children.has(part)) node.children.set(part, {children: new Map()});
+        node = node.children.get(part);
+        if (index === parts.length - 1) node.fileKey = key;
+      });
+    }
+    return roots;
+  }
+  function countFiles(node) {
+    let count = node.fileKey ? 1 : 0;
+    for (const child of node.children.values()) count += countFiles(child);
+    return count;
+  }
+  function treeRow(node, name, dirKey, isFile) {
+    const item = document.createElement("li");
+    const row = document.createElement("div");
+    row.className = "tree-row";
+    const size = document.createElement("span");
+    size.className = "tree-size";
+    if (isFile) {
+      const label = document.createElement("span");
+      label.className = "tree-name";
+      label.textContent = "📄 " + name;
+      size.textContent = formatBytes(storageBytes(storageFiles[node.fileKey]));
+      row.append(
+        label, size,
+        storageButton("Edit", () => openStorageEditor(node.fileKey)),
+        storageButton("Download", () => downloadStorageFile(node.fileKey)),
+        storageButton("Delete", () => deleteStorageFile(node.fileKey), "danger")
+      );
+    } else {
+      const collapsed = collapsedDirs.has(dirKey);
+      const toggle = document.createElement("button");
+      toggle.className = "tree-toggle";
+      toggle.setAttribute("aria-expanded", String(!collapsed));
+      toggle.textContent = `${collapsed ? "▶" : "▼"} 📁 ${name}`;
+      toggle.onclick = () => {
+        if (!collapsedDirs.delete(dirKey)) collapsedDirs.add(dirKey);
+        renderStorage();
+      };
+      const files = countFiles(node);
+      size.textContent = `${files} file${files === 1 ? "" : "s"}`;
+      row.append(toggle, size);
+    }
+    item.append(row);
+    return item;
+  }
+  function renderTreeChildren(node, dirPrefix) {
+    const list = document.createElement("ul");
+    // Folders first, then files, each alphabetical.
+    const entries = [...node.children.entries()].sort(([nameA, a], [nameB, b]) => {
+      const dirA = a.children.size > 0, dirB = b.children.size > 0;
+      return dirA === dirB ? nameA.localeCompare(nameB) : dirA ? -1 : 1;
+    });
+    for (const [name, child] of entries) {
+      const isFile = child.children.size === 0 && child.fileKey !== undefined;
+      const dirKey = `${dirPrefix}/${name}`;
+      const item = treeRow(child, name, dirKey, isFile);
+      if (!isFile && !collapsedDirs.has(dirKey)) item.append(renderTreeChildren(child, dirKey));
+      list.append(item);
+    }
+    return list;
+  }
+  function renderStorage() {
+    const fileCount = Object.keys(storageFiles).length;
+    storageTreeEl.textContent = "";
+    const names = {sd: "SD card", littlefs: "LittleFS"};
+    for (const [fs, root] of buildStorageTree()) {
+      const dirKey = `${fs}:`;
+      const item = treeRow(root, names[fs] || fs, dirKey, false);
+      if (!collapsedDirs.has(dirKey)) item.append(renderTreeChildren(root, dirKey));
+      storageTreeEl.append(item);
+    }
+    storageEmptyEl.hidden = fileCount > 0;
+    storageSummaryEl.textContent = fileCount ? `(${fileCount})` : "";
+  }
+  function warnIfRunning() {
+    if (worker) log("Storage changed in the browser; the running app sees it the next time it loads.");
+  }
+  function normalizeStoragePath(path) {
+    return "/" + path.trim().replace(/\\/g, "/").replace(/^\/+/, "").replace(/\/{2,}/g, "/");
+  }
+  function openStorageEditor(key, text) {
+    storageEditingKey = key;
+    storageEditorPathEl.value = key === null ? "" : describeStorageKey(key).path;
+    storageEditorPathEl.disabled = false;
+    storageEditorTextEl.value = key === null ? (text || "") : storageFiles[key];
+    storageEditorEl.hidden = false;
+    storageEditorPathEl.focus();
+  }
+  function closeStorageEditor() {
+    storageEditingKey = null;
+    storageEditorEl.hidden = true;
+  }
+  function saveStorageEditor() {
+    const path = normalizeStoragePath(storageEditorPathEl.value);
+    if (path === "/") {
+      storageEditorPathEl.focus();
+      return;
+    }
+    const fs = storageEditingKey === null ? storageFsEl.value : storageEditingKey.slice(0, storageEditingKey.indexOf(":"));
+    const key = `${fs}:${path}`;
+    if (storageEditingKey !== null && storageEditingKey !== key) delete storageFiles[storageEditingKey];
+    storageFiles[key] = storageEditorTextEl.value;
+    closeStorageEditor();
+    storageChanged();
+    warnIfRunning();
+  }
+  function deleteStorageFile(key) {
+    delete storageFiles[key];
+    if (storageEditingKey === key) closeStorageEditor();
+    storageChanged();
+    warnIfRunning();
+  }
+  function downloadStorageFile(key) {
+    const url = URL.createObjectURL(new Blob([storageFiles[key]], {type: "text/plain"}));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = describeStorageKey(key).path.split("/").pop() || "file.txt";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }
+  document.getElementById("storageNew").onclick = () => openStorageEditor(null);
+  document.getElementById("storageEditorSave").onclick = saveStorageEditor;
+  document.getElementById("storageEditorCancel").onclick = closeStorageEditor;
+  document.getElementById("storageClear").onclick = () => {
+    if (!Object.keys(storageFiles).length) return;
+    if (!window.confirm("Delete all files in the emulated storage?")) return;
+    for (const key of Object.keys(storageFiles)) delete storageFiles[key];
+    closeStorageEditor();
+    storageChanged();
+    warnIfRunning();
+  };
+  document.getElementById("storageUpload").onclick = () => storageUploadInputEl.click();
+  storageUploadInputEl.addEventListener("change", async () => {
+    for (const file of storageUploadInputEl.files) {
+      try {
+        storageFiles[`${storageFsEl.value}:${normalizeStoragePath(file.name)}`] = await file.text();
+      } catch (e) {
+        log(`Could not read ${file.name}: ${e.message}`);
+      }
+    }
+    storageUploadInputEl.value = "";
+    storageChanged();
+    warnIfRunning();
+  });
+  renderStorage();
+
+  // Script editor: always shows the script that was last started; Run restarts with the edited text.
+  const scriptEditorEl = document.getElementById("scriptEditor");
+  const editorNameEl = document.getElementById("editorName");
+  let activeScriptName = "";
+  function runEditor() {
+    if (!scriptEditorEl.value.trim()) return;
+    start(scriptEditorEl.value, activeScriptName || "editor.js");
+  }
+  document.getElementById("editorRun").onclick = runEditor;
+  scriptEditorEl.addEventListener("keydown", event => {
+    if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+      event.preventDefault();
+      runEditor();
+    } else if (event.key === "Tab" && !event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey) {
+      // Insert two spaces instead of leaving the field; Esc then Tab still moves focus on.
+      event.preventDefault();
+      scriptEditorEl.setRangeText("  ", scriptEditorEl.selectionStart, scriptEditorEl.selectionEnd, "end");
+    }
+  });
+
   function start(code, name) {
+    activeScriptName = name || "index.js";
+    if (scriptEditorEl.value !== code) scriptEditorEl.value = code;
+    editorNameEl.textContent = `(${activeScriptName})`;
     stopRuntime(false);
     clearScreen();
     setStatus("Running", "running");
@@ -308,6 +603,19 @@
       const m = e.data;
       if (m.type === "draw") render(m);
       else if (m.type === "log") log(m.text);
+      else if (m.type === "storageWrite") {
+        storageFiles[m.key] = m.value;
+        storageChanged();
+      }
+      else if (m.type === "storageRemove") {
+        delete storageFiles[m.key];
+        storageChanged();
+      }
+      else if (m.type === "wifiSelect") {
+        wifiNetworkEl.value = String(m.index);
+        const network = WIFI_NETWORKS[m.index - 1];
+        log(network ? `Wi-Fi connected to ${network.SSID}` : "Wi-Fi disconnected");
+      }
       else if (m.type === "spriteCreate") {
         const surface = document.createElement("canvas");
         surface.width = m.width;
@@ -376,7 +684,7 @@
       log(`Worker error: ${e.message}`);
     };
     try {
-      runningWorker.postMessage({type:"start", code, sab, name:name || "index.js", width:W, height:H});
+      runningWorker.postMessage({type:"start", code, sab, name:name || "index.js", width:W, height:H, wifiNetworks:WIFI_NETWORKS, storage:{...storageFiles}});
     } catch (e) {
       stopRuntime(false);
       throw e;

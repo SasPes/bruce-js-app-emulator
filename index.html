@@ -16,6 +16,13 @@
       <div class="header-meta">
         <p>Created by <a href="https://github.com/SasPes">SasPes</a></p>
         <div class="resolution">
+          <select id="wifiNetwork" aria-label="Wi-Fi network" title="Wi-Fi network used by connectDialog()"></select>
+          <select id="httpMode" aria-label="HTTP requests" title="How wifi.httpFetch() sends requests">
+            <option value="0" selected>HTTP: direct</option>
+            <option value="1">HTTP: proxy</option>
+          </select>
+        </div>
+        <div class="resolution">
           <select id="resolution" aria-label="Screen resolution">
             <option value="170x320">170 × 320</option>
             <option value="240x135">240 × 135</option>
@@ -91,7 +98,7 @@
 
       <aside class="panel">
         <div class="panel-title">
-          <span>Runtime console</span>
+          <button id="toggleConsole" class="panel-toggle" aria-expanded="true" aria-controls="log">▼ Runtime console</button>
           <div class="panel-actions">
             <span id="status" class="status idle">Idle</span>
             <button id="clearLog" aria-label="Clear log" title="Clear log">
@@ -102,6 +109,40 @@
           </div>
         </div>
         <pre id="log" aria-live="polite"></pre>
+
+        <details id="editorPanel">
+          <summary>Script editor <span id="editorName"></span></summary>
+          <div class="storage-actions">
+            <button id="editorRun" class="text-button" title="Run the edited script (Ctrl+Enter)">Run</button>
+            <span class="editor-hint">Ctrl+Enter to run</span>
+          </div>
+          <textarea id="scriptEditor" class="script-editor" spellcheck="false" rows="14"
+            aria-label="Script editor" placeholder="Load an app to see its code here, or type a script and press Run."></textarea>
+        </details>
+
+        <details id="storagePanel">
+          <summary>Storage <span id="storageSummary"></span></summary>
+          <div class="storage-actions">
+            <select id="storageFs" aria-label="Filesystem for new files">
+              <option value="sd" selected>SD card</option>
+              <option value="littlefs">LittleFS</option>
+            </select>
+            <button id="storageNew" class="text-button">New file</button>
+            <button id="storageUpload" class="text-button">Upload</button>
+            <input id="storageUploadInput" type="file" multiple hidden>
+            <button id="storageClear" class="text-button danger">Clear all</button>
+          </div>
+          <div id="storageEditor" class="storage-editor" hidden>
+            <input id="storageEditorPath" type="text" spellcheck="false" aria-label="File path" placeholder="/folder/file.txt">
+            <textarea id="storageEditorText" spellcheck="false" aria-label="File contents" rows="8"></textarea>
+            <div class="storage-actions">
+              <button id="storageEditorSave" class="text-button">Save</button>
+              <button id="storageEditorCancel" class="text-button">Cancel</button>
+            </div>
+          </div>
+          <ul id="storageTree" class="storage-tree" aria-label="Storage files"></ul>
+          <p id="storageEmpty">No files yet. Files saved by apps with <code>storage.write()</code> appear here and persist in this browser.</p>
+        </details>
 
         <details>
           <summary>Supported features</summary>
