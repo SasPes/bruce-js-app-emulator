@@ -23,6 +23,38 @@
     if (!urlEl.hidden) urlEl.focus();
   });
   updateAppSource();
+
+  // Build optgroups per category from the Bruce App Store index (runnable .js apps only).
+  const STORE_INDEX = "https://raw.githubusercontent.com/BruceDevices/App-Store-Data/refs/heads/main/releases/category-all.json";
+  async function loadStoreApps() {
+    const end = document.getElementById("storeEnd");
+    try {
+      const response = await fetch(STORE_INDEX);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const data = await response.json();
+      const categories = [...data.categories].sort((a, b) => a.name.localeCompare(b.name));
+      for (const category of categories) {
+        const group = document.createElement("optgroup");
+        group.label = "  " + category.name;
+        const apps = [...category.apps].sort((a, b) => a.name.localeCompare(b.name));
+        for (const app of apps) {
+          const first = app.files && app.files[0];
+          const source = first && (typeof first === "string" ? first : first.source);
+          if (!source || !source.toLowerCase().endsWith(".js")) continue;
+          const path = (app.path || "/").replace(/^\/|\/$/g, "");
+          const parts = [app.owner, app.repo, app.commit, ...(path ? path.split("/") : []), source];
+          const option = document.createElement("option");
+          option.value = encodeURI("https://raw.githubusercontent.com/" + parts.join("/"));
+          option.textContent = app.name;
+          group.appendChild(option);
+        }
+        if (group.children.length) end.before(group);
+      }
+    } catch (e) {
+      log(`Could not load Bruce App Store list: ${e.message}`);
+    }
+  }
+  loadStoreApps();
   let worker = null;
   let inputView = null;
   let loadVersion = 0;
