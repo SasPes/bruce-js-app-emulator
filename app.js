@@ -1113,5 +1113,5 @@
   });
 
   log("Ready. Load a Bruce .js app.");
-  log("Choose an app or Custom URL, then click Load app.");
+  log("Choose an app, Custom Script or load from Custom URL, then click Load app (play) button.");
 })();
