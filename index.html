@@ -17,14 +17,6 @@
       <div class="header-meta">
         <p>Created by <a href="https://github.com/SasPes">SasPes</a> and  <a href="https://github.com/emericklaw">Matt</a></p>
         <div class="resolution">
-          <select id="wifiNetwork" aria-label="Wi-Fi network" title="Wi-Fi network used by connectDialog()"></select>
-          <select id="httpMode" aria-label="HTTP requests" title="How wifi.httpFetch() sends requests">
-            <option value="0" selected>HTTP: Direct</option>
-            <option value="1">HTTP: via Proxy</option>
-            <option value="2">HTTP: via Corsfix</option>
-          </select>
-        </div>
-        <div class="resolution">
           <select id="resolution" aria-label="Screen resolution">
             <option value="custom">Custom</option>
           </select>
@@ -33,6 +25,14 @@
             ×
             <input id="customH" type="number" min="1" max="1024" step="1" value="170" aria-label="Custom height">
           </span>
+        </div>
+        <div class="resolution">
+          <select id="wifiNetwork" aria-label="Wi-Fi network" title="Wi-Fi network used by connectDialog()"></select>
+          <select id="httpMode" aria-label="HTTP requests" title="How wifi.httpFetch() sends requests">
+            <option value="0" selected>HTTP: Direct</option>
+            <option value="1">HTTP: via Proxy</option>
+            <option value="2">HTTP: via Corsfix</option>
+          </select>
         </div>
       </div>
     </header>
