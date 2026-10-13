@@ -3,7 +3,7 @@ main = "worker.js"
 compatibility_date = "2026-10-06"
 
 [build]
-command = "rm -rf dist && mkdir -p dist && cp index.html style.css config.js app.js emulator-worker.js pixel-renderer.js _headers dist/"
+command = "rm -rf dist && mkdir -p dist && cp index.html style.css config.js devices.js app.js emulator-worker.js pixel-renderer.js _headers dist/"
 
 [assets]
 directory = "./dist"

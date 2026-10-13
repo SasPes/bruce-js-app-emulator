@@ -279,7 +279,7 @@ const storage = {
     if (exists) postMessage({type:"storageRemove", key:key});
     return exists;
   },
-  spaceLittleFS:()=>storageSpace("littlefs",2048),
+  spaceLittleFS:()=>storageSpace("littlefs",hardware.flash * 256),
   spaceSDCard:()=>storageSpace("sd",32768)
 };
 
@@ -313,38 +313,48 @@ const serial = {
   }
 };
 
-// Synthetic hardware readings, not measurements of the host computer.
+// Synthetic hardware readings, not measurements of the host computer. The page sends the
+// selected device's specs on start; these defaults are the LILYGO T-Embed CC1101.
+let deviceBoard = "LILYGO T-Embed CC1101";
+let hardware = {esp:"ESP32-S3-WROOM-1U", battery:1300, flash:16, psram:8};
 const device = {
   getName:()=>"Bruce Web Emulator",
-  getBoard:()=>"LILYGO T-Embed CC1101",
-  getModel:()=>"ESP32-S3 (simulated)",
+  getBoard:()=>deviceBoard,
+  getModel:()=>hardware.esp + " (simulated)",
   getBruceVersion:()=>BRUCE_VERSION,
-  getBattery:()=>100,
-  getBatteryDetailed:()=>({
-    battery_percent:100,
-    remaining_capacity:1500,
-    full_capacity:1500,
-    design_capacity:1500,
-    is_charging:false,
-    charging_voltage:0,
-    charging_current:0,
-    time_to_empty:900,
-    average_power_use:420,
-    voltage:4.2,
-    voltage_raw:4200,
-    current_instant:-100,
-    current_average:-100,
-    current_raw:-100
-  }),
-  getFreeHeapSize:()=>({
-    ram_free:256 * 1024,
-    ram_min_free:240 * 1024,
-    ram_largest_free_block:128 * 1024,
-    ram_size:320 * 1024,
-    psram_free:8 * 1024 * 1024,
-    psram_size:8 * 1024 * 1024,
-    psram_largest_free_block:8 * 1024 * 1024
-  }),
+  // Devices without a battery report 0, as there is no fuel gauge to read.
+  getBattery:()=>hardware.battery ? 100 : 0,
+  getBatteryDetailed:()=>{
+    const mAh = hardware.battery;
+    return {
+      battery_percent:mAh ? 100 : 0,
+      remaining_capacity:mAh,
+      full_capacity:mAh,
+      design_capacity:mAh,
+      is_charging:false,
+      charging_voltage:0,
+      charging_current:0,
+      time_to_empty:Math.round(mAh * 0.6),
+      average_power_use:mAh ? 420 : 0,
+      voltage:mAh ? 4.2 : 0,
+      voltage_raw:mAh ? 4200 : 0,
+      current_instant:mAh ? -100 : 0,
+      current_average:mAh ? -100 : 0,
+      current_raw:mAh ? -100 : 0
+    };
+  },
+  getFreeHeapSize:()=>{
+    const psram = hardware.psram * 1024 * 1024;
+    return {
+      ram_free:256 * 1024,
+      ram_min_free:240 * 1024,
+      ram_largest_free_block:128 * 1024,
+      ram_size:320 * 1024,
+      psram_free:psram,
+      psram_size:psram,
+      psram_largest_free_block:psram
+    };
+  },
   getEEPROMSize:()=>512
 };
 
@@ -837,6 +847,8 @@ onmessage = function(e) {
   if (e.data.type==="start") {
     input = new Int32Array(e.data.sab);
     WIFI_NETWORKS = e.data.wifiNetworks || [];
+    if (e.data.board) deviceBoard = e.data.board;
+    if (e.data.hardware) hardware = e.data.hardware;
     // Files saved earlier (kept by the page), so apps see the same storage on every run.
     Object.assign(storageMap, e.data.storage || {});
     const w = e.data.width || 320, h = e.data.height || 170;

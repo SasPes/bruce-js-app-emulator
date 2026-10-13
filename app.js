@@ -164,6 +164,30 @@
   const customWEl = document.getElementById("customW");
   const customHEl = document.getElementById("customH");
   const screenshotBtn = document.getElementById("screenshot");
+  const RESOLUTION_KEY = "bruce-emulator-resolution";
+  // Device dropdown, built from devices.js ahead of the "Custom" entry.
+  const customOption = resolutionEl.querySelector('option[value="custom"]');
+  for (const device of window.DEVICES) {
+    const [dw, dh] = device.screen;
+    const option = new Option(`${device.name} (${dw} × ${dh})`, device.name);
+    option.dataset.size = `${dw}x${dh}`;
+    resolutionEl.insertBefore(option, customOption);
+  }
+  resolutionEl.value = window.DEFAULT_DEVICE;
+  // Hardware details (chip, battery, flash, PSRAM) come from the selected device; Custom keeps the last one.
+  let currentDevice = window.DEVICES.find(d => d.name === window.DEFAULT_DEVICE);
+  const sideLabelEl = document.querySelector(".side-label");
+  let boardName = "";
+  // Names the device on the device body.
+  function applyDeviceName() {
+    const custom = resolutionEl.value === "custom";
+    boardName = custom ? "Custom" : resolutionEl.value;
+    currentDevice = window.DEVICES.find(d => d.name === resolutionEl.value) || currentDevice;
+    const [vendor, ...rest] = boardName.split(" ");
+    sideLabelEl.textContent = "";
+    sideLabelEl.append(rest.length ? vendor.toUpperCase() : boardName);
+    if (rest.length) sideLabelEl.append(document.createElement("br"), rest.join(" "));
+  }
   function applyResolution() {
     let w, h;
     if (resolutionEl.value === "custom") {
@@ -171,8 +195,12 @@
       h = Math.trunc(Number(customHEl.value));
       if (!(w >= 1 && w <= 1024 && h >= 1 && h <= 1024)) return;
     } else {
-      [w, h] = resolutionEl.value.split("x").map(Number);
+      [w, h] = resolutionEl.selectedOptions[0].dataset.size.split("x").map(Number);
     }
+    try {
+      localStorage.setItem(RESOLUTION_KEY, JSON.stringify({device: resolutionEl.value, w, h}));
+    } catch (e) {}
+    applyDeviceName();
     if (w === W && h === H) return;
     // Running worker holds the old size; stop it before resizing.
     if (worker) stopRuntime(false);
@@ -193,10 +221,25 @@
       customHEl.value = H;
     }
     customBoxEl.hidden = !custom;
+    applyDeviceName();
     applyResolution();
   });
   customWEl.addEventListener("change", applyResolution);
   customHEl.addEventListener("change", applyResolution);
+  // Restore the last chosen device or custom size.
+  try {
+    const saved = JSON.parse(localStorage.getItem(RESOLUTION_KEY) || "null");
+    if (saved && [...resolutionEl.options].some(o => o.value === saved.device)) {
+      resolutionEl.value = saved.device;
+      if (saved.device === "custom") {
+        customWEl.value = saved.w;
+        customHEl.value = saved.h;
+        customBoxEl.hidden = false;
+      }
+      applyResolution();
+    }
+  } catch (e) {}
+  applyDeviceName();
 
   document.getElementById("screenshot").onclick = () => {
     renderer.present();
@@ -770,7 +813,7 @@
       log(`Worker error: ${e.message}`);
     };
     try {
-      runningWorker.postMessage({type:"start", code, sab, name:name || "index.js", width:W, height:H, wifiNetworks:WIFI_NETWORKS, storage:{...storageFiles}});
+      runningWorker.postMessage({type:"start", code, sab, name:name || "index.js", width:W, height:H, board:boardName, hardware:currentDevice, wifiNetworks:WIFI_NETWORKS, storage:{...storageFiles}});
     } catch (e) {
       stopRuntime(false);
       throw e;

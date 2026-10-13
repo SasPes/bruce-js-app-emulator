@@ -3,18 +3,18 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Bruce LILYGO T-Embed CC1101 Emulator</title>
+  <title>Bruce JS Interpreter Emulator</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <main class="app">
     <header>
       <div>
-        <h1>Bruce LILYGO T-Embed CC1101 Emulator</h1>
+        <h1>Bruce JS Interpreter Emulator</h1>
         <p>Browser runtime for Bruce JavaScript apps</p>
       </div>
       <div class="header-meta">
-        <p>Created by <a href="https://github.com/SasPes">SasPes</a></p>
+        <p>Created by <a href="https://github.com/SasPes">SasPes</a> and  <a href="https://github.com/emericklaw">Matt</a></p>
         <div class="resolution">
           <select id="wifiNetwork" aria-label="Wi-Fi network" title="Wi-Fi network used by connectDialog()"></select>
           <select id="httpMode" aria-label="HTTP requests" title="How wifi.httpFetch() sends requests">
@@ -25,13 +25,6 @@
         </div>
         <div class="resolution">
           <select id="resolution" aria-label="Screen resolution">
-            <option value="170x320">170 × 320</option>
-            <option value="240x135">240 × 135</option>
-            <option value="240x240">240 × 240</option>
-            <option value="320x170" selected>320 × 170</option>
-            <option value="320x240">320 × 240</option>
-            <option value="480x222">480 × 222</option>
-            <option value="480x320">480 × 320</option>
             <option value="custom">Custom</option>
           </select>
           <span id="customResolution" hidden>
@@ -168,6 +161,7 @@
   </main>
 
   <script src="config.js"></script>
+  <script src="devices.js"></script>
   <script src="pixel-renderer.js"></script>
   <script src="app.js?v=7"></script>
 </body>
