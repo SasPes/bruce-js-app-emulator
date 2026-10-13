@@ -26,6 +26,26 @@ The browser UI is in `app.js`; the standalone `emulator-worker.js` is a
 `eval` in the worker scope. `pixel-renderer.js` draws both the display and
 offscreen sprites. Serve these files together from the same origin.
 
+## Run with Docker
+
+The `docker/` folder has a `Dockerfile` (Python slim image running `start-server.py`
+as a non-root user, with a health check) and a sample `docker-compose.yml`:
+
+```sh
+cd docker
+docker compose up --build
+```
+
+Then open <http://localhost:8080>. Without Compose, build from the repository root:
+`docker build -f docker/Dockerfile -t bruce-js-emulator .` and run with
+`docker run -p 127.0.0.1:8080:8080 bruce-js-emulator`.
+
+The sample publishes the port on `127.0.0.1` only. The emulator needs HTTPS or
+`localhost` for `SharedArrayBuffer`, and the server's `/proxy` endpoint fetches URLs
+for anyone who can reach it, so put an HTTPS reverse proxy with access control in
+front before exposing it. `HOST` and `PORT` environment variables change where
+`start-server.py` listens (the image sets `HOST=0.0.0.0`).
+
 ## Deploy to Cloudflare Pages
 
 The whole emulator runs in the browser and can be hosted on Cloudflare Pages'

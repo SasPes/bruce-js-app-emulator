@@ -75,5 +75,8 @@ class EmulatorRequestHandler(SimpleHTTPRequestHandler):
 
 if __name__ == "__main__":
     os.chdir(Path(__file__).resolve().parent)
-    print("Bruce JS Interpreter emulator: http://localhost:8080")
-    ThreadingHTTPServer(("127.0.0.1", 8080), EmulatorRequestHandler).serve_forever()
+    # HOST/PORT can be overridden, e.g. HOST=0.0.0.0 inside a container.
+    host = os.environ.get("HOST", "127.0.0.1")
+    port = int(os.environ.get("PORT", "8080"))
+    print(f"Bruce JS Interpreter emulator: http://{host}:{port}")
+    ThreadingHTTPServer((host, port), EmulatorRequestHandler).serve_forever()
