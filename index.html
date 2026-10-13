@@ -53,6 +53,7 @@
               <option value="https://raw.githubusercontent.com/SasPes/morse-code/refs/heads/main/MorseCode.js">Morse Code</option>
               <optgroup label="App Store"></optgroup>
               <option disabled id="storeEnd">────────────</option>
+              <option value="script">Custom Script</option>
               <option value="custom">Custom URL</option>
             </select>
             <input id="url" type="url"
@@ -112,9 +113,10 @@
         <pre id="log" aria-live="polite"></pre>
 
         <details id="editorPanel">
-          <summary>Script editor <span id="editorName"></span></summary>
+          <summary>Script editor</summary>
           <div class="storage-actions">
             <button id="editorRun" class="text-button" title="Run the edited script (Ctrl+Enter)">Run</button>
+            <button id="editorSave" class="text-button" title="Download the script as a .js file">Save</button>
             <span class="editor-hint">Ctrl+Enter to run</span>
           </div>
           <textarea id="scriptEditor" class="script-editor" spellcheck="false" rows="14"

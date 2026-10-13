@@ -26,8 +26,14 @@
   function updateAppSource() {
     urlEl.hidden = appSourceEl.value !== "custom";
   }
+  // Set once the user picks from the dropdown; the saved-script restore then leaves it alone.
+  let sourceTouched = false;
+  // Replaced when the script editor section runs; re-selects the last script's dropdown entry.
+  let reapplySource = () => {};
   appSourceEl.addEventListener("change", () => {
+    sourceTouched = true;
     updateAppSource();
+    if (appSourceEl.value === "script") showScriptEditor();
     if (!urlEl.hidden) urlEl.focus();
   });
   updateAppSource();
@@ -61,6 +67,8 @@
     } catch (e) {
       log(`Could not load Bruce App Store list: ${e.message}`);
     }
+    // The restored script may be one of the store apps that only just got added.
+    if (!sourceTouched) reapplySource();
   }
   loadStoreApps();
   // Simulated networks; the selected index goes to the worker through input slot 4 (0 = none).
@@ -578,24 +586,77 @@
 
   // Script editor: always shows the script that was last started; Run restarts with the edited text.
   const scriptEditorEl = document.getElementById("scriptEditor");
-  const editorNameEl = document.getElementById("editorName");
   let activeScriptName = "";
   // The last started script is kept in localStorage and put back in the editor after a refresh
   // (it is not run automatically).
   const LAST_SCRIPT_KEY = "bruce-emulator-last-script";
+  // Where the script came from: {kind:"url", url} or {kind:"file", name}, so the dropdown can match.
+  let activeSource = null;
+  function applySource(source) {
+    if (!source) return;
+    if (source.kind === "file") {
+      const value = "file:" + source.name;
+      let option = [...appSourceEl.options].find(o => o.value === value);
+      if (!option) {
+        option = new Option("File: " + source.name, value);
+        appSourceEl.add(option, 0);
+      }
+      appSourceEl.value = value;
+    } else if (source.kind === "script") {
+      appSourceEl.value = "script";
+    } else if (source.kind === "url") {
+      const option = [...appSourceEl.options].find(o => o.value === source.url && !o.disabled);
+      if (option) {
+        appSourceEl.value = source.url;
+      } else {
+        appSourceEl.value = "custom";
+        urlEl.value = source.url;
+      }
+    }
+    updateAppSource();
+  }
   try {
     const last = JSON.parse(localStorage.getItem(LAST_SCRIPT_KEY) || "null");
     if (last && typeof last.code === "string") {
       scriptEditorEl.value = last.code;
       activeScriptName = String(last.name || "index.js");
-      editorNameEl.textContent = `(${activeScriptName})`;
+      activeSource = last.source || null;
+      applySource(activeSource);
+      reapplySource = () => applySource(activeSource);
     }
   } catch (e) {}
   function runEditor() {
     if (!scriptEditorEl.value.trim()) return;
-    start(scriptEditorEl.value, activeScriptName || "editor.js");
+    start(scriptEditorEl.value, activeScriptName || "editor.js", activeSource);
   }
   document.getElementById("editorRun").onclick = runEditor;
+  document.getElementById("editorSave").onclick = () => {
+    const url = URL.createObjectURL(new Blob([scriptEditorEl.value], {type: "text/javascript"}));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = /\.js$/i.test(activeScriptName) ? activeScriptName : (activeScriptName || "script") + ".js";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  };
+  function showScriptEditor() {
+    document.getElementById("editorPanel").open = true;
+    scriptEditorEl.focus();
+  }
+  // Typing or pasting code makes it the "Custom Script", which the play button then runs.
+  let editorSaveTimer = null;
+  scriptEditorEl.addEventListener("input", () => {
+    activeSource = {kind: "script"};
+    activeScriptName = "custom.js";
+    applySource(activeSource);
+    clearTimeout(editorSaveTimer);
+    editorSaveTimer = setTimeout(() => {
+      try {
+        localStorage.setItem(LAST_SCRIPT_KEY, JSON.stringify({name: activeScriptName, code: scriptEditorEl.value, source: activeSource}));
+      } catch (e) {}
+    }, 300);
+  });
   scriptEditorEl.addEventListener("keydown", event => {
     if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
       event.preventDefault();
@@ -607,12 +668,15 @@
     }
   });
 
-  function start(code, name) {
+  function start(code, name, source) {
     activeScriptName = name || "index.js";
+    if (source) {
+      activeSource = source;
+      applySource(source);
+    }
     if (scriptEditorEl.value !== code) scriptEditorEl.value = code;
-    editorNameEl.textContent = `(${activeScriptName})`;
     try {
-      localStorage.setItem(LAST_SCRIPT_KEY, JSON.stringify({name: activeScriptName, code}));
+      localStorage.setItem(LAST_SCRIPT_KEY, JSON.stringify({name: activeScriptName, code, source: activeSource}));
     } catch (e) {}
     stopRuntime(false);
     clearScreen();
@@ -753,12 +817,12 @@
     }
   }
 
-  async function loadScript(load, readCode, name, failureMessage, hint) {
+  async function loadScript(load, readCode, name, failureMessage, hint, source) {
     setStatus("Loading...", "running");
     try {
       const code = await readCode(load.controller.signal);
       if (!isCurrentLoad(load)) return;
-      start(code, name());
+      start(code, name(), source);
     } catch (e) {
       if (!isCurrentLoad(load)) return;
       setStatus("Error", "error");
@@ -793,6 +857,25 @@
 
   async function loadUrl() {
     unlockAudio();
+    if (appSourceEl.value === "script") {
+      if (scriptEditorEl.value.trim()) {
+        if (!activeSource || activeSource.kind !== "script") {
+          activeSource = {kind: "script"};
+          activeScriptName = "custom.js";
+        }
+        runEditor();
+      } else {
+        log("Custom Script: paste or type code in the script editor first.");
+        showScriptEditor();
+      }
+      return;
+    }
+    if (appSourceEl.value.startsWith("file:")) {
+      // A previously loaded local file: its code lives in the editor, there is no URL to fetch.
+      if (scriptEditorEl.value.trim()) runEditor();
+      else log("Use Load .js to pick the file again.");
+      return;
+    }
     const load = beginLoad();
     const custom = appSourceEl.value === "custom";
     const url = custom ? urlEl.value.trim() : appSourceEl.value;
@@ -813,7 +896,8 @@
       },
       ()=>decodeURIComponent(new URL(url).pathname.split("/").pop() || "remote.js"),
       "URL load failed",
-      "If the remote host blocks browser CORS, download the .js file and use Load .js."
+      "If the remote host blocks browser CORS, download the .js file and use Load .js.",
+      {kind: "url", url}
     );
   }
 
@@ -879,7 +963,7 @@
     e.target.value = "";
     const load = beginLoad();
     log(`Reading ${file.name}`);
-    await loadScript(load, signal=>readFile(file, signal), ()=>file.name, "File load failed");
+    await loadScript(load, signal=>readFile(file, signal), ()=>file.name, "File load failed", undefined, {kind: "file", name: file.name});
   };
 
   // Cardputer has no separate nav buttons: Prev/Next are the "," and "/" keys.
