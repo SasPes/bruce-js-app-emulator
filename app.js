@@ -399,10 +399,38 @@
   // Virtual storage: keys are "sd:/path" or "littlefs:/path" with text contents. The page owns
   // the files (kept in localStorage); a worker gets a copy when it starts and reports changes.
   const STORAGE_KEY = "bruce-emulator-storage";
+  // Files hold text, or for binary data (images, ...) one character per byte. Binary files are
+  // kept in binaryKeys and saved to localStorage as base64, which is compact and survives JSON.
   const storageFiles = Object.create(null);
+  const binaryKeys = new Set();
   try {
-    Object.assign(storageFiles, JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}"));
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
+    for (const [key, value] of Object.entries(saved)) {
+      if (value !== null && typeof value === "object" && typeof value.b64 === "string") {
+        storageFiles[key] = atob(value.b64);
+        binaryKeys.add(key);
+      } else {
+        storageFiles[key] = String(value);
+      }
+    }
   } catch (e) {}
+  // Raw file bytes to what the emulated storage holds: text if valid UTF-8, else a byte string.
+  function bytesToStorage(bytes) {
+    try {
+      return {text: new TextDecoder("utf-8", {fatal: true}).decode(bytes), binary: false};
+    } catch (e) {
+      return {text: Array.from(bytes, byte => String.fromCharCode(byte)).join(""), binary: true};
+    }
+  }
+  function storageToBytes(key) {
+    const text = storageFiles[key];
+    return binaryKeys.has(key) ? Uint8Array.from(text, character => character.charCodeAt(0) & 0xff)
+      : new TextEncoder().encode(text);
+  }
+  function forgetStorageFile(key) {
+    delete storageFiles[key];
+    binaryKeys.delete(key);
+  }
   const storageTreeEl = document.getElementById("storageTree");
   const storageEmptyEl = document.getElementById("storageEmpty");
   const storageSummaryEl = document.getElementById("storageSummary");
@@ -417,7 +445,11 @@
 
   function saveStorage() {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(storageFiles));
+      const saved = {};
+      for (const [key, value] of Object.entries(storageFiles)) {
+        saved[key] = binaryKeys.has(key) ? {b64: btoa(value)} : value;
+      }
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(saved));
     } catch (e) {
       if (!storageSaveWarned) {
         storageSaveWarned = true;
@@ -499,11 +531,11 @@
     if (isFile) {
       const label = document.createElement("span");
       label.className = "tree-name";
-      label.textContent = "📄 " + name;
-      size.textContent = formatBytes(storageBytes(storageFiles[node.fileKey]));
+      label.textContent = (binaryKeys.has(node.fileKey) ? "🖼️ " : "📄 ") + name;
+      size.textContent = formatBytes(storageToBytes(node.fileKey).length);
       row.append(
         label, size,
-        storageButton("Edit", () => openStorageEditor(node.fileKey)),
+        ...(binaryKeys.has(node.fileKey) ? [] : [storageButton("Edit", () => openStorageEditor(node.fileKey))]),
         storageButton("Download", () => downloadStorageFile(node.fileKey)),
         storageButton("Delete", () => deleteStorageFile(node.fileKey), "danger")
       );
@@ -579,20 +611,21 @@
     }
     const fs = storageEditingKey === null ? storageFsEl.value : storageEditingKey.slice(0, storageEditingKey.indexOf(":"));
     const key = `${fs}:${path}`;
-    if (storageEditingKey !== null && storageEditingKey !== key) delete storageFiles[storageEditingKey];
+    if (storageEditingKey !== null && storageEditingKey !== key) forgetStorageFile(storageEditingKey);
     storageFiles[key] = storageEditorTextEl.value;
+    binaryKeys.delete(key);
     closeStorageEditor();
     storageChanged();
     warnIfRunning();
   }
   function deleteStorageFile(key) {
-    delete storageFiles[key];
+    forgetStorageFile(key);
     if (storageEditingKey === key) closeStorageEditor();
     storageChanged();
     warnIfRunning();
   }
   function downloadStorageFile(key) {
-    const url = URL.createObjectURL(new Blob([storageFiles[key]], {type: "text/plain"}));
+    const url = URL.createObjectURL(new Blob([storageToBytes(key)], {type: binaryKeys.has(key) ? "application/octet-stream" : "text/plain"}));
     const link = document.createElement("a");
     link.href = url;
     link.download = describeStorageKey(key).path.split("/").pop() || "file.txt";
@@ -607,7 +640,7 @@
   document.getElementById("storageClear").onclick = () => {
     if (!Object.keys(storageFiles).length) return;
     if (!window.confirm("Delete all files in the emulated storage?")) return;
-    for (const key of Object.keys(storageFiles)) delete storageFiles[key];
+    for (const key of Object.keys(storageFiles)) forgetStorageFile(key);
     closeStorageEditor();
     storageChanged();
     warnIfRunning();
@@ -616,7 +649,11 @@
   storageUploadInputEl.addEventListener("change", async () => {
     for (const file of storageUploadInputEl.files) {
       try {
-        storageFiles[`${storageFsEl.value}:${normalizeStoragePath(file.name)}`] = await file.text();
+        const key = `${storageFsEl.value}:${normalizeStoragePath(file.name)}`;
+        const {text, binary} = bytesToStorage(new Uint8Array(await file.arrayBuffer()));
+        storageFiles[key] = text;
+        if (binary) binaryKeys.add(key);
+        else binaryKeys.delete(key);
       } catch (e) {
         log(`Could not read ${file.name}: ${e.message}`);
       }
@@ -734,10 +771,12 @@
       else if (m.type === "log") log(m.text);
       else if (m.type === "storageWrite") {
         storageFiles[m.key] = m.value;
+        if (m.binary) binaryKeys.add(m.key);
+        else binaryKeys.delete(m.key);
         storageChanged();
       }
       else if (m.type === "storageRemove") {
-        delete storageFiles[m.key];
+        forgetStorageFile(m.key);
         storageChanged();
       }
       else if (m.type === "wifiSelect") {
@@ -813,7 +852,7 @@
       log(`Worker error: ${e.message}`);
     };
     try {
-      runningWorker.postMessage({type:"start", code, sab, name:name || "index.js", width:W, height:H, board:boardName, hardware:currentDevice, wifiNetworks:WIFI_NETWORKS, storage:{...storageFiles}});
+      runningWorker.postMessage({type:"start", code, sab, name:name || "index.js", width:W, height:H, board:boardName, hardware:currentDevice, wifiNetworks:WIFI_NETWORKS, storage:{...storageFiles}, storageBinary:[...binaryKeys]});
     } catch (e) {
       stopRuntime(false);
       throw e;

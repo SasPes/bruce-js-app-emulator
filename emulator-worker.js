@@ -230,10 +230,26 @@ function storageKey(name) {
 }
 function storageSpace(fs, total) {
   const bytes = Object.keys(storageMap).filter(name=>name.startsWith(fs + ":")).reduce(
-    (sum,name)=>sum + new TextEncoder().encode(storageMap[name]).length, 0);
+    (sum,name)=>sum + storageByteLength(name), 0);
   const used = Math.ceil(bytes / 1024);
   total = Math.max(total, used);
   return {total:total, used:used, free:total-used};
+}
+// Keys whose contents are raw bytes (one character per byte) rather than text, e.g. images saved
+// by httpFetch. The page keeps these as base64.
+const binaryFiles = new Set();
+function storageByteLength(key) {
+  return binaryFiles.has(key) ? storageMap[key].length : new TextEncoder().encode(storageMap[key]).length;
+}
+function storageWrite(name,value,mode,binary) {
+  const key = storageKey(name);
+  storageMap[key] = (mode === "append" ? storageMap[key] || "" : "") + String(value);
+  // Appending to a binary file keeps it binary; any other text write makes it text.
+  if (binary || (mode === "append" && binaryFiles.has(key))) binaryFiles.add(key);
+  else binaryFiles.delete(key);
+  // The page persists the files and shows them in its storage browser.
+  postMessage({type:"storageWrite", key:key, value:storageMap[key], binary:binaryFiles.has(key)});
+  return true;
 }
 const storage = {
   read:(name)=>storageMap[storageKey(name)] || "",
@@ -255,7 +271,7 @@ const storage = {
       if (!entries.has(entryName) || isDirectory) {
         entries.set(entryName,{
           name:entryName,isDirectory:isDirectory,
-          size:isDirectory ? 0 : new TextEncoder().encode(storageMap[file]).length
+          size:isDirectory ? 0 : storageByteLength(file)
         });
       }
     }
@@ -265,17 +281,12 @@ const storage = {
     const sorted = Array.from(entries.values()).sort((a,b)=>a.name.localeCompare(b.name));
     return options && options.withFileTypes ? sorted : sorted.map(entry=>entry.name);
   },
-  write:(name,value,mode)=>{
-    const key = storageKey(name);
-    storageMap[key] = (mode === "append" ? storageMap[key] || "" : "") + String(value);
-    // The page persists the files and shows them in its storage browser.
-    postMessage({type:"storageWrite", key:key, value:storageMap[key]});
-    return true;
-  },
+  write:(name,value,mode)=>storageWrite(name,value,mode,false),
   remove:(name)=>{
     const key = storageKey(name);
     const exists = key in storageMap;
     delete storageMap[key];
+    binaryFiles.delete(key);
     if (exists) postMessage({type:"storageRemove", key:key});
     return exists;
   },
@@ -467,14 +478,15 @@ const wifi = {
       if (ok) {
         // x-user-defined gives one character per byte (0xF780-0xF7FF for bytes >= 0x80).
         const bytes = Uint8Array.from(body, character=>character.charCodeAt(0) & 0xff);
-        let text;
+        let text, binary = false;
         try {
           text = new TextDecoder("utf-8",{fatal:true}).decode(bytes);
         } catch (e) {
-          // Binary data cannot be kept as text; store one character per byte.
+          // Not text: keep one character per byte; the page stores it as base64.
           text = Array.from(bytes, byte=>String.fromCharCode(byte)).join("");
+          binary = true;
         }
-        storage.write(options.save,text,options.save.mode);
+        storageWrite(options.save,text,options.save.mode,binary);
         return {status:request.status, ok:true, body:"", length:bytes.length, headers};
       }
       return {status:request.status, ok:false, body:"", length:0, headers};
@@ -851,6 +863,7 @@ onmessage = function(e) {
     if (e.data.hardware) hardware = e.data.hardware;
     // Files saved earlier (kept by the page), so apps see the same storage on every run.
     Object.assign(storageMap, e.data.storage || {});
+    for (const key of e.data.storageBinary || []) binaryFiles.add(key);
     const w = e.data.width || 320, h = e.data.height || 170;
     Object.assign(display, drawingApi(w, h, displayState, {type:"draw"}));
     display.getRotation = () => h > w ? 0 : 1;
