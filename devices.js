@@ -1,6 +1,6 @@
 // Supported devices: screen size, chip, battery capacity (mAh, 0 = none), flash and PSRAM (MB, 0 = none).
 // Drives the device dropdown and the simulated device, battery and memory readings.
-window.DEVICES = [
+globalThis.DEVICES = [
   {name: "Bruce Reaper RF", screen: [320, 170], esp: "ESP32-S3 N16R8", battery: 1000, flash: 16, psram: 8},
   {name: "M5Stack Cardputer", screen: [240, 135], esp: "ESP32-S3FN8", battery: 1520, flash: 8, psram: 0},
   {name: "M5Stack Cardputer Adv", screen: [240, 135], esp: "ESP32-S3FN8", battery: 1750, flash: 8, psram: 0},
@@ -23,4 +23,4 @@ window.DEVICES = [
   {name: "Lilygo T-LoRa Pager", screen: [480, 222], esp: "ESP32-S3", battery: 1500, flash: 16, psram: 8},
   {name: "CYD-3248S035", screen: [480, 320], esp: "ESP32-WROOM-32", battery: 0, flash: 4, psram: 0}
 ];
-window.DEFAULT_DEVICE = "Lilygo T-Embed CC1101";
+globalThis.DEFAULT_DEVICE = "Lilygo T-Embed CC1101";

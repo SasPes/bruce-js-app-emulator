@@ -6,7 +6,13 @@ import os
 import urllib.error
 import urllib.request
 
-DROPPED_RESPONSE_HEADERS = {"content-encoding", "content-length", "transfer-encoding", "connection", "set-cookie"}
+DROPPED_RESPONSE_HEADERS = {
+    "content-encoding",
+    "content-length",
+    "transfer-encoding",
+    "connection",
+    "set-cookie",
+}
 
 
 class EmulatorRequestHandler(SimpleHTTPRequestHandler):
@@ -31,7 +37,9 @@ class EmulatorRequestHandler(SimpleHTTPRequestHandler):
             headers["User-Agent"] = "Mozilla/5.0 (compatible; BruceEmulator)"
         length = int(self.headers.get("Content-Length") or 0)
         body = self.rfile.read(length) if length else None
-        request = urllib.request.Request(target, data=body, headers=headers, method=self.command)
+        request = urllib.request.Request(
+            target, data=body, headers=headers, method=self.command
+        )
         try:
             upstream = urllib.request.urlopen(request, timeout=30)
         except urllib.error.HTTPError as error:
@@ -44,7 +52,9 @@ class EmulatorRequestHandler(SimpleHTTPRequestHandler):
             self.end_headers()
             return
         data = upstream.read()
-        self.send_response(upstream.status if hasattr(upstream, "status") else upstream.code)
+        self.send_response(
+            upstream.status if hasattr(upstream, "status") else upstream.code
+        )
         for name, value in upstream.headers.items():
             if name.lower() not in DROPPED_RESPONSE_HEADERS:
                 self.send_header(name, value)
@@ -65,5 +75,5 @@ class EmulatorRequestHandler(SimpleHTTPRequestHandler):
 
 if __name__ == "__main__":
     os.chdir(Path(__file__).resolve().parent)
-    print("Bruce LILYGO T-Embed CC1101 emulator: http://localhost:8080")
+    print("Bruce JS Interpreter emulator: http://localhost:8080")
     ThreadingHTTPServer(("127.0.0.1", 8080), EmulatorRequestHandler).serve_forever()

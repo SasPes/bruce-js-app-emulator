@@ -324,10 +324,11 @@ const serial = {
   }
 };
 
-// Synthetic hardware readings, not measurements of the host computer. The page sends the
-// selected device's specs on start; these defaults are the LILYGO T-Embed CC1101.
-let deviceBoard = "LILYGO T-Embed CC1101";
-let hardware = {esp:"ESP32-S3-WROOM-1U", battery:1300, flash:16, psram:8};
+// Synthetic hardware readings, not measurements of the host computer. The specs come from
+// devices.js
+importScripts("devices.js");
+let deviceBoard = DEFAULT_DEVICE;
+let hardware = DEVICES.find(d=>d.name === DEFAULT_DEVICE);
 const device = {
   getName:()=>"Bruce Web Emulator",
   getBoard:()=>deviceBoard,
@@ -860,7 +861,7 @@ onmessage = function(e) {
     input = new Int32Array(e.data.sab);
     WIFI_NETWORKS = e.data.wifiNetworks || [];
     if (e.data.board) deviceBoard = e.data.board;
-    if (e.data.hardware) hardware = e.data.hardware;
+    hardware = DEVICES.find(d=>d.name === e.data.device) || hardware;
     // Files saved earlier (kept by the page), so apps see the same storage on every run.
     Object.assign(storageMap, e.data.storage || {});
     for (const key of e.data.storageBinary || []) binaryFiles.add(key);

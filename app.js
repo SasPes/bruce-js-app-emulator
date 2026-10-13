@@ -852,7 +852,7 @@
       log(`Worker error: ${e.message}`);
     };
     try {
-      runningWorker.postMessage({type:"start", code, sab, name:name || "index.js", width:W, height:H, board:boardName, hardware:currentDevice, wifiNetworks:WIFI_NETWORKS, storage:{...storageFiles}, storageBinary:[...binaryKeys]});
+      runningWorker.postMessage({type:"start", code, sab, name:name || "index.js", width:W, height:H, board:boardName, device:currentDevice.name, wifiNetworks:WIFI_NETWORKS, storage:{...storageFiles}, storageBinary:[...binaryKeys]});
     } catch (e) {
       stopRuntime(false);
       throw e;
