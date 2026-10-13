@@ -1,0 +1,21 @@
+# Sample compose file. From the docker/ folder run:
+#   docker compose up --build
+# then open http://localhost:8080
+services:
+  emulator:
+    build:
+      context: ..                  # repository root
+      dockerfile: docker/Dockerfile
+    image: bruce-js-emulator
+    container_name: bruce-js-emulator
+    restart: unless-stopped
+    ports:
+      # Bound to localhost only. The emulator needs a secure context (HTTPS or localhost) for
+      # SharedArrayBuffer, and /proxy relays requests for any caller that can reach it, so put
+      # an HTTPS reverse proxy with access control in front before exposing it to a network.
+      - "127.0.0.1:8080:8080"
+    environment:
+      PORT: "8080"
+    read_only: true
+    security_opt:
+      - no-new-privileges:true

@@ -24,9 +24,26 @@ function gc() {
     gcNoticeShown = true;
   }
 }
-if (typeof console === "undefined") {
-  var console = { log: print, error: print, warn: print };
+// Route console.* to the runtime console instead of the browser's dev tools.
+function consoleText(value) {
+  if (typeof value === "string") return value;
+  if (value instanceof Error) return value.stack || String(value);
+  if (value !== null && typeof value === "object") {
+    try {
+      return JSON.stringify(value);
+    } catch (e) {}
+  }
+  return String(value);
 }
+function consoleMethod(prefix) {
+  return function() {
+    print((prefix ? prefix + " " : "") + Array.prototype.map.call(arguments, consoleText).join(" "));
+  };
+}
+globalThis.console = {
+  log: consoleMethod(""), info: consoleMethod(""), debug: consoleMethod(""),
+  warn: consoleMethod("[warn]"), error: consoleMethod("[error]")
+};
 function now() { return Date.now(); }
 function to_string(value) {
   return arguments.length ? String(value) : "";
@@ -213,10 +230,26 @@ function storageKey(name) {
 }
 function storageSpace(fs, total) {
   const bytes = Object.keys(storageMap).filter(name=>name.startsWith(fs + ":")).reduce(
-    (sum,name)=>sum + new TextEncoder().encode(storageMap[name]).length, 0);
+    (sum,name)=>sum + storageByteLength(name), 0);
   const used = Math.ceil(bytes / 1024);
   total = Math.max(total, used);
   return {total:total, used:used, free:total-used};
+}
+// Keys whose contents are raw bytes (one character per byte) rather than text, e.g. images saved
+// by httpFetch. The page keeps these as base64.
+const binaryFiles = new Set();
+function storageByteLength(key) {
+  return binaryFiles.has(key) ? storageMap[key].length : new TextEncoder().encode(storageMap[key]).length;
+}
+function storageWrite(name,value,mode,binary) {
+  const key = storageKey(name);
+  storageMap[key] = (mode === "append" ? storageMap[key] || "" : "") + String(value);
+  // Appending to a binary file keeps it binary; any other text write makes it text.
+  if (binary || (mode === "append" && binaryFiles.has(key))) binaryFiles.add(key);
+  else binaryFiles.delete(key);
+  // The page persists the files and shows them in its storage browser.
+  postMessage({type:"storageWrite", key:key, value:storageMap[key], binary:binaryFiles.has(key)});
+  return true;
 }
 const storage = {
   read:(name)=>storageMap[storageKey(name)] || "",
@@ -238,7 +271,7 @@ const storage = {
       if (!entries.has(entryName) || isDirectory) {
         entries.set(entryName,{
           name:entryName,isDirectory:isDirectory,
-          size:isDirectory ? 0 : new TextEncoder().encode(storageMap[file]).length
+          size:isDirectory ? 0 : storageByteLength(file)
         });
       }
     }
@@ -248,18 +281,16 @@ const storage = {
     const sorted = Array.from(entries.values()).sort((a,b)=>a.name.localeCompare(b.name));
     return options && options.withFileTypes ? sorted : sorted.map(entry=>entry.name);
   },
-  write:(name,value,mode)=>{
-    const key = storageKey(name);
-    storageMap[key] = (mode === "append" ? storageMap[key] || "" : "") + String(value);
-    return true;
-  },
+  write:(name,value,mode)=>storageWrite(name,value,mode,false),
   remove:(name)=>{
     const key = storageKey(name);
     const exists = key in storageMap;
     delete storageMap[key];
+    binaryFiles.delete(key);
+    if (exists) postMessage({type:"storageRemove", key:key});
     return exists;
   },
-  spaceLittleFS:()=>storageSpace("littlefs",2048),
+  spaceLittleFS:()=>storageSpace("littlefs",hardware.flash * 256),
   spaceSDCard:()=>storageSpace("sd",32768)
 };
 
@@ -293,60 +324,189 @@ const serial = {
   }
 };
 
-// Synthetic hardware readings, not measurements of the host computer.
+// Synthetic hardware readings, not measurements of the host computer. The specs come from
+// devices.js
+importScripts("devices.js");
+let deviceBoard = DEFAULT_DEVICE;
+let hardware = DEVICES.find(d=>d.name === DEFAULT_DEVICE);
 const device = {
   getName:()=>"Bruce Web Emulator",
-  getBoard:()=>"LILYGO T-Embed CC1101",
-  getModel:()=>"ESP32-S3 (simulated)",
+  getBoard:()=>deviceBoard,
+  getModel:()=>hardware.esp + " (simulated)",
   getBruceVersion:()=>BRUCE_VERSION,
-  getBattery:()=>100,
-  getBatteryDetailed:()=>({
-    battery_percent:100,
-    remaining_capacity:1500,
-    full_capacity:1500,
-    design_capacity:1500,
-    is_charging:false,
-    charging_voltage:0,
-    charging_current:0,
-    time_to_empty:900,
-    average_power_use:420,
-    voltage:4.2,
-    voltage_raw:4200,
-    current_instant:-100,
-    current_average:-100,
-    current_raw:-100
-  }),
-  getFreeHeapSize:()=>({
-    ram_free:256 * 1024,
-    ram_min_free:240 * 1024,
-    ram_largest_free_block:128 * 1024,
-    ram_size:320 * 1024,
-    psram_free:8 * 1024 * 1024,
-    psram_size:8 * 1024 * 1024,
-    psram_largest_free_block:8 * 1024 * 1024
-  }),
+  // Devices without a battery report 0, as there is no fuel gauge to read.
+  getBattery:()=>hardware.battery ? 100 : 0,
+  getBatteryDetailed:()=>{
+    const mAh = hardware.battery;
+    return {
+      battery_percent:mAh ? 100 : 0,
+      remaining_capacity:mAh,
+      full_capacity:mAh,
+      design_capacity:mAh,
+      is_charging:false,
+      charging_voltage:0,
+      charging_current:0,
+      time_to_empty:Math.round(mAh * 0.6),
+      average_power_use:mAh ? 420 : 0,
+      voltage:mAh ? 4.2 : 0,
+      voltage_raw:mAh ? 4200 : 0,
+      current_instant:mAh ? -100 : 0,
+      current_average:mAh ? -100 : 0,
+      current_raw:mAh ? -100 : 0
+    };
+  },
+  getFreeHeapSize:()=>{
+    const psram = hardware.psram * 1024 * 1024;
+    return {
+      ram_free:256 * 1024,
+      ram_min_free:240 * 1024,
+      ram_largest_free_block:128 * 1024,
+      ram_size:320 * 1024,
+      psram_free:psram,
+      psram_size:psram,
+      psram_largest_free_block:psram
+    };
+  },
   getEEPROMSize:()=>512
 };
 
+// Simulated station. The network chosen in the page selector (input slot 4: 0 = none,
+// n = network n) is the one the device is "connected" to, with no connect call needed.
+// httpFetch uses the browser's own connection. Nothing touches real Wi-Fi hardware.
+let WIFI_NETWORKS = [];
+function wifiCurrent() {
+  const selected = Atomics.load(input,4);
+  return selected >= 1 && selected <= WIFI_NETWORKS.length ? WIFI_NETWORKS[selected - 1] : null;
+}
+function wifiSelect(index) {
+  Atomics.store(input,4,index);
+  postMessage({type:"wifiSelect", index:index});
+}
 const wifi = {
   connectDialog:()=>{
-    print("Wi-Fi connection is unavailable in emulator; remaining disconnected");
-    return false;
-  },
-  httpFetch:()=>{
-    const message = "wifi.httpFetch is not supported in emulator; no network request was sent";
-    print(message);
-    throw new Error(message);
-  },
-  connected:()=>{
-    if (!unavailableInputs.has("wifi.connected")) {
-      print("wifi.connected: simulated Wi-Fi is disconnected; network operations are unavailable");
-      unavailableInputs.add("wifi.connected");
+    const current = wifiCurrent();
+    if (!current) {
+      print("Wi-Fi: no network selected in the emulator");
+      return false;
     }
-    return false;
+    return true;
   },
-  getIPAddress:()=>"0.0.0.0",
-  getMACAddress:()=>"02:00:00:00:00:01"
+  connect:(ssid,timeout = 10,password)=>{
+    if (typeof ssid !== "string" || !ssid) {
+      throw new TypeError("wifi.connect requires an SSID string");
+    }
+    if (!Number.isFinite(timeout) || timeout < 0) {
+      throw new RangeError("wifi.connect timeout must be a non-negative number of seconds");
+    }
+    if (password !== undefined && typeof password !== "string") {
+      throw new TypeError("wifi.connect password must be a string");
+    }
+    const index = WIFI_NETWORKS.findIndex(network=>network.SSID === ssid);
+    if (index < 0) {
+      print("Wi-Fi: network not found: " + ssid);
+      return false;
+    }
+    wifiSelect(index + 1);
+    return true;
+  },
+  disconnect:()=>{
+    if (wifiCurrent()) wifiSelect(0);
+    return true;
+  },
+  scan:()=>WIFI_NETWORKS.map(network=>({...network})),
+  connected:()=>wifiCurrent() !== null,
+  getIPAddress:()=>wifi.connected() ? "192.168.1.100" : "0.0.0.0",
+  getMACAddress:()=>"02:00:00:00:00:01",
+  httpFetch:(url,options = {})=>{
+    if (typeof url !== "string" || !url) {
+      throw new TypeError("wifi.httpFetch requires a URL string");
+    }
+    if (options === null || typeof options !== "object") {
+      throw new TypeError("wifi.httpFetch options must be an object");
+    }
+    if (!wifi.connected()) {
+      throw new Error("wifi.httpFetch: Wi-Fi is not connected");
+    }
+    const method = String(options.method || "GET").toUpperCase();
+    const request = new XMLHttpRequest();
+    // Input slot 16 is set from the page: 0 direct, 1 the server's /proxy, 2 the Corsfix public proxy.
+    const mode = Atomics.load(input,16);
+    const useProxy = mode === 1;
+    const useCorsfix = mode === 2;
+    const given = options.headers || {};
+    try {
+      if (useProxy) {
+        request.open(method,"/proxy?url=" + encodeURIComponent(url),false);
+        const sent = {};
+        for (const name of Object.keys(given)) sent[name] = String(given[name]);
+        request.setRequestHeader("X-Proxy-Headers",JSON.stringify(sent));
+      } else {
+        // Corsfix takes the raw target URL after "?" and adds the CORS headers; it only allows
+        // a few request headers, anything else makes the browser's preflight fail.
+        request.open(method,useCorsfix ? "https://proxy.corsfix.com/?" + url : url,false);
+        for (const name of Object.keys(given)) {
+          try {
+            request.setRequestHeader(name,String(given[name]));
+          } catch (e) {
+            print("wifi.httpFetch: browser does not allow header " + name);
+          }
+        }
+      }
+      if (options.save) request.overrideMimeType("text/plain; charset=x-user-defined");
+      request.send(options.body === undefined || method === "GET" || method === "HEAD"
+        ? null : String(options.body));
+    } catch (e) {
+      print(useProxy
+        ? "wifi.httpFetch failed: could not reach the emulator's /proxy endpoint"
+        : useCorsfix
+          ? "wifi.httpFetch failed: Corsfix could not fetch " + url + " (limit reached, blocked header, or unreachable)"
+          : "wifi.httpFetch failed (network error or blocked by CORS): " + url);
+      return {status:0, ok:false, body:"", headers:{}};
+    }
+    if (useProxy && request.getResponseHeader("X-Proxy-Error")) {
+      print("wifi.httpFetch failed: proxy could not reach " + url);
+      return {status:0, ok:false, body:"", headers:{}};
+    }
+    const headers = {};
+    for (const line of request.getAllResponseHeaders().trim().split(/\r?\n/)) {
+      const split = line.indexOf(":");
+      if (split > 0) headers[line.slice(0,split).trim().toLowerCase()] = line.slice(split + 1).trim();
+    }
+    let body = request.responseText;
+    // options.save {fs, path, mode} writes the response to storage instead of returning it.
+    if (options.save) {
+      const ok = request.status >= 200 && request.status < 300;
+      if (ok) {
+        // x-user-defined gives one character per byte (0xF780-0xF7FF for bytes >= 0x80).
+        const bytes = Uint8Array.from(body, character=>character.charCodeAt(0) & 0xff);
+        let text, binary = false;
+        try {
+          text = new TextDecoder("utf-8",{fatal:true}).decode(bytes);
+        } catch (e) {
+          // Not text: keep one character per byte; the page stores it as base64.
+          text = Array.from(bytes, byte=>String.fromCharCode(byte)).join("");
+          binary = true;
+        }
+        storageWrite(options.save,text,options.save.mode,binary);
+        return {status:request.status, ok:true, body:"", length:bytes.length, headers};
+      }
+      return {status:request.status, ok:false, body:"", length:0, headers};
+    }
+    // responseType "json" returns the parsed value; unparseable bodies stay as text.
+    if (options.responseType === "json") {
+      try {
+        body = JSON.parse(body);
+      } catch (e) {
+        print("wifi.httpFetch: response is not valid JSON");
+      }
+    }
+    return {
+      status:request.status,
+      ok:request.status >= 200 && request.status < 300,
+      body,
+      headers
+    };
+  }
 };
 
 const gpioValues = new Map();
@@ -699,6 +859,15 @@ Object.assign(globalThis, {
 onmessage = function(e) {
   if (e.data.type==="start") {
     input = new Int32Array(e.data.sab);
+    WIFI_NETWORKS = e.data.wifiNetworks || [];
+    if (e.data.board) deviceBoard = e.data.board;
+    hardware = DEVICES.find(d=>d.name === e.data.device) || hardware;
+    // Files saved earlier (kept by the page), so apps see the same storage on every run.
+    Object.assign(storageMap, e.data.storage || {});
+    for (const key of e.data.storageBinary || []) binaryFiles.add(key);
+    const w = e.data.width || 320, h = e.data.height || 170;
+    Object.assign(display, drawingApi(w, h, displayState, {type:"draw"}));
+    display.getRotation = () => h > w ? 0 : 1;
     __filepath = __dirpath + "/" + (e.data.name || "index.js");
     try {
       // Bruce's current scripting environment is ES5-oriented; the emulator
@@ -706,7 +875,10 @@ onmessage = function(e) {
       eval(e.data.code);
       postMessage({type:"done"});
     } catch(err) {
-      postMessage({type:"error", text:err && (err.stack || err.message) || String(err)});
+      // Firefox stacks omit the message, so lead with it.
+      const stack = err && err.stack || "";
+      const head = err && err.message ? (err.name || "Error") + ": " + err.message : String(err);
+      postMessage({type:"error", text:stack.includes(head) ? stack : head + (stack ? "\n" + stack : "")});
     }
   }
 };

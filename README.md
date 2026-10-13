@@ -1,7 +1,7 @@
-# Bruce LILYGO T-Embed CC1101 Web Emulator
+# Bruce JS Interpreter Web Emulator
 
-A browser emulator for Bruce JavaScript apps on the LILYGO T-Embed CC1101,
-with a **320 x 170** pixel display.
+A browser emulator for Bruce JavaScript apps on various devices across different screen sizes.
+The device can be changed from the dropdown in the header, including a custom width and height.
 
 **Live emulator:** [bruce-js-app-emulator.saspes.workers.dev](https://bruce-js-app-emulator.saspes.workers.dev/)
 
@@ -26,6 +26,26 @@ The browser UI is in `app.js`; the standalone `emulator-worker.js` is a
 `eval` in the worker scope. `pixel-renderer.js` draws both the display and
 offscreen sprites. Serve these files together from the same origin.
 
+## Run with Docker
+
+The `docker/` folder has a `Dockerfile` (Python slim image running `start-server.py`
+as a non-root user, with a health check) and a sample `docker-compose.yml`:
+
+```sh
+cd docker
+docker compose up --build
+```
+
+Then open <http://localhost:8080>. Without Compose, build from the repository root:
+`docker build -f docker/Dockerfile -t bruce-js-emulator .` and run with
+`docker run -p 127.0.0.1:8080:8080 bruce-js-emulator`.
+
+The sample publishes the port on `127.0.0.1` only. The emulator needs HTTPS or
+`localhost` for `SharedArrayBuffer`, and the server's `/proxy` endpoint fetches URLs
+for anyone who can reach it, so put an HTTPS reverse proxy with access control in
+front before exposing it. `HOST` and `PORT` environment variables change where
+`start-server.py` listens (the image sets `HOST=0.0.0.0`).
+
 ## Deploy to Cloudflare Pages
 
 The whole emulator runs in the browser and can be hosted on Cloudflare Pages'
@@ -42,7 +62,7 @@ variables are needed in production.
 | Framework preset | None |
 | Production branch | `main` |
 | Root directory | Default (repository root) |
-| Build command | `rm -rf dist && mkdir -p dist && cp index.html style.css app.js emulator-worker.js pixel-renderer.js _headers dist/` |
+| Build command | `rm -rf dist && mkdir -p dist && cp index.html favicon.ico style.css config.js devices.js app.js emulator-worker.js pixel-renderer.js _headers dist/` |
 | Build output directory | `dist` |
 | Environment variables | None |
 
@@ -50,7 +70,7 @@ variables are needed in production.
    Subsequent pushes to `main` deploy automatically.
 
 The build command recreates the generated `dist/` directory and copies only the
-six browser assets listed above, so stale assets, source documentation,
+browser assets listed above, so stale assets, source documentation,
 screenshots, local server, and IDE files are not published. Do not store anything
 manually in `dist/`; it is ignored by Git and replaced on each build.
 The `_headers` file must be in the deployment output: it sets
@@ -71,6 +91,22 @@ No Python server or new project dependencies are required. The worker script
 and isolation `_headers` are included; the repository root is never the asset
 directory. If another deployment tool skips Wrangler's build step, run the
 build command from the Pages table first and publish only `dist/`.
+
+## Static hosting without the proxy
+
+`wifi.httpFetch` can relay requests through a `/proxy` endpoint, which only exists
+with `start-server.py` or the Cloudflare Worker (`worker.js`). On a purely static
+host (Cloudflare Pages as configured above, GitHub Pages, S3, ...) set the flag in
+`config.js` before publishing:
+
+```js
+window.EMULATOR_CONFIG = { serverProxy: false };
+```
+
+The "HTTP: proxy" option is then hidden; "HTTP: direct" and "HTTP: Corsfix" still
+work. Static hosts also need the `Cross-Origin-Opener-Policy: same-origin` and
+`Cross-Origin-Embedder-Policy: require-corp` headers (see `_headers`) for
+`SharedArrayBuffer`; hosts that cannot set them will not run the emulator.
 
 ## Usage
 
@@ -118,11 +154,11 @@ On-screen buttons provide the same controls.
 | Device | `require("device")` | Simulated name, board, model, Bruce version, battery, heap, and EEPROM information |
 | Battery | `require("battery")`, `battery.level()` | Same simulated 100% reading as `device.getBattery()` |
 | GPIO | `require("gpio")`, `gpio.analogWrite(pin, value)` | Pins 0-48, PWM values 0-255; changed values logged only, no physical output. Other GPIO methods unsupported. |
-| Wi-Fi | `require("wifi")` | IP/MAC getters; `connected()` always returns `false` with a one-time notice. `connectDialog()` logs and returns `false`; `httpFetch()` logs and throws without sending a request. |
+| Wi-Fi | `require("wifi")` | Simulated station: the network chosen in the header dropdown is the one the device is connected to (`connected()` is `true`, `getIPAddress()` returns `192.168.1.100`; "none" means disconnected). `connect(ssid, ...)` and `disconnect()` change that selection, `connectDialog()` succeeds when a network is selected, `scan()` lists the dropdown networks. `httpFetch(url, {method, headers, body})` sends a real synchronous request and returns `{status, ok, body, headers}`. The "HTTP" header dropdown picks **direct** (browser request, subject to CORS), **proxy** (relayed through the server's `/proxy`, no CORS limit) or **Corsfix** (the free public [Corsfix](https://corsfix.com/free-cors-proxy) CORS proxy; no server needed, but its free tier is rate limited and, on a deployed site rather than localhost, needs the Corsfix SDK or a registered domain). A failed request returns `status` 0. |
 | IR | `require("ir")`, `transmit(data, protocol = "NEC", bits = 32)` | Hexadecimal transmissions logged only, returning `true`; no physical signal. `read(timeoutSeconds = 10)` / `readRaw(timeoutSeconds = 10)` return empty strings after timeout with a one-time notice. File transmission unsupported. |
 | BadUSB | `require("badusb")` | Simulated `setup`, `print`, `println`, `press`, `pressRaw`, `hold`, `release`, `releaseAll`; call `setup()` first. Logged only, no USB device or host keystrokes. `runFile` logs and returns `false`. |
 | Sub-GHz | `require("subghz")`, `setFrequency(MHz)`, `transmit(hexData, frequencyHz = 433920000, te = 174, count = 10)` | Transmissions logged only, returning `true`. Default transmit frequency is independent of `setFrequency`, which validates/logs tuning only. `read` / `readRaw` return empty strings after timeout (seconds, default 10) with a one-time notice. `transmitFile` logs and returns `false`. |
-| Storage | `require("storage")` | In-memory files, `readdir` (including `withFileTypes`), and space information. String paths or `{fs: "sd" \| "littlefs", path: "/file"}`; files reset on app restart. |
+| Storage | `require("storage")` | In-memory files, `readdir` (including `withFileTypes`), and space information. String paths or `{fs: "sd" \| "littlefs", path: "/file"}`; files are kept in this browser (localStorage, text only) and can be viewed, edited, uploaded, downloaded and deleted in the **Storage** panel. Edits made in the panel while an app runs are seen the next time it loads. |
 | Timing | `delay(ms)`, `now()` | Blocking Bruce-style polling loops |
 | Random | `random()`, `random(max)`, `random(min, max)` | Integers; upper bound exclusive |
 | Garbage collection | `gc()` | Logs once that browser collection is automatic and cannot be forced |

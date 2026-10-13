@@ -1,8 +1,11 @@
 name = "bruce-js-app-emulator"
+main = "worker.js"
 compatibility_date = "2026-10-06"
 
 [build]
-command = "rm -rf dist && mkdir -p dist && cp index.html style.css app.js emulator-worker.js pixel-renderer.js _headers dist/"
+command = "rm -rf dist && mkdir -p dist && cp index.html favicon.ico style.css config.js devices.js app.js emulator-worker.js pixel-renderer.js _headers dist/"
 
 [assets]
 directory = "./dist"
+binding = "ASSETS"
+run_worker_first = ["/proxy"]
