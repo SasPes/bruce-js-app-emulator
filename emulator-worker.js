@@ -390,8 +390,10 @@ const wifi = {
     }
     const method = String(options.method || "GET").toUpperCase();
     const request = new XMLHttpRequest();
-    // Input slot 16 is set from the page: 1 relays through the server's /proxy (no CORS limits).
-    const useProxy = Atomics.load(input,16) === 1;
+    // Input slot 16 is set from the page: 0 direct, 1 the server's /proxy, 2 the Corsfix public proxy.
+    const mode = Atomics.load(input,16);
+    const useProxy = mode === 1;
+    const useCorsfix = mode === 2;
     const given = options.headers || {};
     try {
       if (useProxy) {
@@ -400,7 +402,9 @@ const wifi = {
         for (const name of Object.keys(given)) sent[name] = String(given[name]);
         request.setRequestHeader("X-Proxy-Headers",JSON.stringify(sent));
       } else {
-        request.open(method,url,false);
+        // Corsfix takes the raw target URL after "?" and adds the CORS headers; it only allows
+        // a few request headers, anything else makes the browser's preflight fail.
+        request.open(method,useCorsfix ? "https://proxy.corsfix.com/?" + url : url,false);
         for (const name of Object.keys(given)) {
           try {
             request.setRequestHeader(name,String(given[name]));
@@ -415,7 +419,9 @@ const wifi = {
     } catch (e) {
       print(useProxy
         ? "wifi.httpFetch failed: could not reach the emulator's /proxy endpoint"
-        : "wifi.httpFetch failed (network error or blocked by CORS): " + url);
+        : useCorsfix
+          ? "wifi.httpFetch failed: Corsfix could not fetch " + url + " (limit reached, blocked header, or unreachable)"
+          : "wifi.httpFetch failed (network error or blocked by CORS): " + url);
       return {status:0, ok:false, body:"", headers:{}};
     }
     if (useProxy && request.getResponseHeader("X-Proxy-Error")) {

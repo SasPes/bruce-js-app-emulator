@@ -86,12 +86,20 @@
   });
   // HTTP mode goes to the worker through input slot 16 (0 = direct, 1 = server /proxy).
   const httpModeEl = document.getElementById("httpMode");
+  // config.js sets serverProxy to false on static hosts, where there is no /proxy endpoint.
+  if (window.EMULATOR_CONFIG && window.EMULATOR_CONFIG.serverProxy === false) {
+    httpModeEl.querySelector('option[value="1"]').remove();
+  }
   function syncHttpMode() {
     if (inputView) Atomics.store(inputView, 16, Number(httpModeEl.value));
   }
   httpModeEl.addEventListener("change", () => {
     syncHttpMode();
-    log(httpModeEl.value === "1" ? "HTTP requests use the server proxy" : "HTTP requests are sent directly (CORS applies)");
+    log({
+      "0": "HTTP requests are sent directly (CORS applies)",
+      "1": "HTTP requests use the server proxy",
+      "2": "HTTP requests use the Corsfix public CORS proxy"
+    }[httpModeEl.value]);
   });
   let worker = null;
   let inputView = null;
@@ -572,6 +580,17 @@
   const scriptEditorEl = document.getElementById("scriptEditor");
   const editorNameEl = document.getElementById("editorName");
   let activeScriptName = "";
+  // The last started script is kept in localStorage and put back in the editor after a refresh
+  // (it is not run automatically).
+  const LAST_SCRIPT_KEY = "bruce-emulator-last-script";
+  try {
+    const last = JSON.parse(localStorage.getItem(LAST_SCRIPT_KEY) || "null");
+    if (last && typeof last.code === "string") {
+      scriptEditorEl.value = last.code;
+      activeScriptName = String(last.name || "index.js");
+      editorNameEl.textContent = `(${activeScriptName})`;
+    }
+  } catch (e) {}
   function runEditor() {
     if (!scriptEditorEl.value.trim()) return;
     start(scriptEditorEl.value, activeScriptName || "editor.js");
@@ -592,6 +611,9 @@
     activeScriptName = name || "index.js";
     if (scriptEditorEl.value !== code) scriptEditorEl.value = code;
     editorNameEl.textContent = `(${activeScriptName})`;
+    try {
+      localStorage.setItem(LAST_SCRIPT_KEY, JSON.stringify({name: activeScriptName, code}));
+    } catch (e) {}
     stopRuntime(false);
     clearScreen();
     setStatus("Running", "running");

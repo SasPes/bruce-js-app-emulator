@@ -43,7 +43,7 @@ variables are needed in production.
 | Framework preset | None |
 | Production branch | `main` |
 | Root directory | Default (repository root) |
-| Build command | `rm -rf dist && mkdir -p dist && cp index.html style.css app.js emulator-worker.js pixel-renderer.js _headers dist/` |
+| Build command | `rm -rf dist && mkdir -p dist && cp index.html style.css config.js app.js emulator-worker.js pixel-renderer.js _headers dist/` |
 | Build output directory | `dist` |
 | Environment variables | None |
 
@@ -51,7 +51,7 @@ variables are needed in production.
    Subsequent pushes to `main` deploy automatically.
 
 The build command recreates the generated `dist/` directory and copies only the
-six browser assets listed above, so stale assets, source documentation,
+browser assets listed above, so stale assets, source documentation,
 screenshots, local server, and IDE files are not published. Do not store anything
 manually in `dist/`; it is ignored by Git and replaced on each build.
 The `_headers` file must be in the deployment output: it sets
@@ -72,6 +72,22 @@ No Python server or new project dependencies are required. The worker script
 and isolation `_headers` are included; the repository root is never the asset
 directory. If another deployment tool skips Wrangler's build step, run the
 build command from the Pages table first and publish only `dist/`.
+
+## Static hosting without the proxy
+
+`wifi.httpFetch` can relay requests through a `/proxy` endpoint, which only exists
+with `start-server.py` or the Cloudflare Worker (`worker.js`). On a purely static
+host (Cloudflare Pages as configured above, GitHub Pages, S3, ...) set the flag in
+`config.js` before publishing:
+
+```js
+window.EMULATOR_CONFIG = { serverProxy: false };
+```
+
+The "HTTP: proxy" option is then hidden; "HTTP: direct" and "HTTP: Corsfix" still
+work. Static hosts also need the `Cross-Origin-Opener-Policy: same-origin` and
+`Cross-Origin-Embedder-Policy: require-corp` headers (see `_headers`) for
+`SharedArrayBuffer`; hosts that cannot set them will not run the emulator.
 
 ## Usage
 
@@ -119,7 +135,7 @@ On-screen buttons provide the same controls.
 | Device | `require("device")` | Simulated name, board, model, Bruce version, battery, heap, and EEPROM information |
 | Battery | `require("battery")`, `battery.level()` | Same simulated 100% reading as `device.getBattery()` |
 | GPIO | `require("gpio")`, `gpio.analogWrite(pin, value)` | Pins 0-48, PWM values 0-255; changed values logged only, no physical output. Other GPIO methods unsupported. |
-| Wi-Fi | `require("wifi")` | Simulated station: the network chosen in the header dropdown is the one the device is connected to (`connected()` is `true`, `getIPAddress()` returns `192.168.1.100`; "none" means disconnected). `connect(ssid, ...)` and `disconnect()` change that selection, `connectDialog()` succeeds when a network is selected, `scan()` lists the dropdown networks. `httpFetch(url, {method, headers, body})` sends a real synchronous request and returns `{status, ok, body, headers}`. The "HTTP" header dropdown picks **direct** (browser request, subject to CORS) or **proxy** (relayed through the server's `/proxy`, no CORS limit). A failed request returns `status` 0. |
+| Wi-Fi | `require("wifi")` | Simulated station: the network chosen in the header dropdown is the one the device is connected to (`connected()` is `true`, `getIPAddress()` returns `192.168.1.100`; "none" means disconnected). `connect(ssid, ...)` and `disconnect()` change that selection, `connectDialog()` succeeds when a network is selected, `scan()` lists the dropdown networks. `httpFetch(url, {method, headers, body})` sends a real synchronous request and returns `{status, ok, body, headers}`. The "HTTP" header dropdown picks **direct** (browser request, subject to CORS), **proxy** (relayed through the server's `/proxy`, no CORS limit) or **Corsfix** (the free public [Corsfix](https://corsfix.com/free-cors-proxy) CORS proxy; no server needed, but its free tier is rate limited and, on a deployed site rather than localhost, needs the Corsfix SDK or a registered domain). A failed request returns `status` 0. |
 | IR | `require("ir")`, `transmit(data, protocol = "NEC", bits = 32)` | Hexadecimal transmissions logged only, returning `true`; no physical signal. `read(timeoutSeconds = 10)` / `readRaw(timeoutSeconds = 10)` return empty strings after timeout with a one-time notice. File transmission unsupported. |
 | BadUSB | `require("badusb")` | Simulated `setup`, `print`, `println`, `press`, `pressRaw`, `hold`, `release`, `releaseAll`; call `setup()` first. Logged only, no USB device or host keystrokes. `runFile` logs and returns `false`. |
 | Sub-GHz | `require("subghz")`, `setFrequency(MHz)`, `transmit(hexData, frequencyHz = 433920000, te = 174, count = 10)` | Transmissions logged only, returning `true`. Default transmit frequency is independent of `setFrequency`, which validates/logs tuning only. `read` / `readRaw` return empty strings after timeout (seconds, default 10) with a one-time notice. `transmitFile` logs and returns `false`. |
