@@ -42,7 +42,7 @@ variables are needed in production.
 | Framework preset | None |
 | Production branch | `main` |
 | Root directory | Default (repository root) |
-| Build command | `rm -rf dist && mkdir -p dist && cp index.html style.css config.js devices.js app.js emulator-worker.js pixel-renderer.js _headers dist/` |
+| Build command | `rm -rf dist && mkdir -p dist && cp index.html favicon.ico style.css config.js devices.js app.js emulator-worker.js pixel-renderer.js _headers dist/` |
 | Build output directory | `dist` |
 | Environment variables | None |
 
