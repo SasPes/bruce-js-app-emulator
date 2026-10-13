@@ -24,9 +24,26 @@ function gc() {
     gcNoticeShown = true;
   }
 }
-if (typeof console === "undefined") {
-  var console = { log: print, error: print, warn: print };
+// Route console.* to the runtime console instead of the browser's dev tools.
+function consoleText(value) {
+  if (typeof value === "string") return value;
+  if (value instanceof Error) return value.stack || String(value);
+  if (value !== null && typeof value === "object") {
+    try {
+      return JSON.stringify(value);
+    } catch (e) {}
+  }
+  return String(value);
 }
+function consoleMethod(prefix) {
+  return function() {
+    print((prefix ? prefix + " " : "") + Array.prototype.map.call(arguments, consoleText).join(" "));
+  };
+}
+globalThis.console = {
+  log: consoleMethod(""), info: consoleMethod(""), debug: consoleMethod(""),
+  warn: consoleMethod("[warn]"), error: consoleMethod("[error]")
+};
 function now() { return Date.now(); }
 function to_string(value) {
   return arguments.length ? String(value) : "";
