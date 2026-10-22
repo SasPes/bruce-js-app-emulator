@@ -10,7 +10,7 @@
       if (savedTheme) document.documentElement.dataset.theme = savedTheme;
     } catch (error) {}
   </script>
-  <link rel="stylesheet" href="style.css?v=8">
+  <link rel="stylesheet" href="style.css?v=9">
 </head>
 <body>
   <main class="app">
@@ -21,20 +21,21 @@
       </div>
       <div class="header-meta">
         <p>Created by <a href="https://github.com/SasPes">SasPes</a></p>
-        <div class="badge">320 × 170</div>
-        <label class="theme-picker">
-          <span>Theme</span>
-          <select id="theme" aria-label="Color theme">
-            <option value="neon">Neon Magenta</option>
-            <option value="midnight">Midnight Blue</option>
-            <option value="matrix">Terminal Green</option>
-            <option value="amber">Amber CRT</option>
-            <option value="crimson">Crimson</option>
-            <option value="ocean">Ocean Teal</option>
-            <option value="violet">Violet</option>
-            <option value="paper">Paper</option>
-          </select>
-        </label>
+        <div class="header-controls">
+          <label class="theme-picker">
+            <select id="theme" aria-label="Color theme">
+              <option value="neon">Neon Magenta</option>
+              <option value="midnight">Midnight Blue</option>
+              <option value="matrix">Terminal Green</option>
+              <option value="amber">Amber CRT</option>
+              <option value="crimson">Crimson</option>
+              <option value="ocean">Ocean Teal</option>
+              <option value="violet">Violet</option>
+              <option value="paper">Paper</option>
+            </select>
+          </label>
+          <div class="badge">320 × 170</div>
+        </div>
       </div>
     </header>
 
