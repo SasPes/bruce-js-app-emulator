@@ -31,6 +31,50 @@
   let activeTone = null;
   const sprites = new Map();
 
+  const themeSelect = document.getElementById("theme");
+  const THEME_STORAGE_KEY = "bruce-emulator-theme";
+  let themeColors = {bg: 0, primary: 0xffff, secondary: 0xffff};
+
+  function cssColorToRgb565(value) {
+    const hex = String(value).trim().replace(/^#/, "");
+    if (!/^[0-9a-f]{6}$/i.test(hex)) return 0;
+    const rgb = parseInt(hex, 16);
+    return (((rgb >> 19) & 31) << 11) | (((rgb >> 10) & 63) << 5) | ((rgb >> 3) & 31);
+  }
+
+  function readThemeColors() {
+    const style = getComputedStyle(document.documentElement);
+    return {
+      bg: cssColorToRgb565(style.getPropertyValue("--screen-bg")),
+      primary: cssColorToRgb565(style.getPropertyValue("--accent")),
+      secondary: cssColorToRgb565(style.getPropertyValue("--text"))
+    };
+  }
+
+  function applyTheme(name, persist) {
+    if (!Array.from(themeSelect.options).some(option => option.value === name)) name = "neon";
+    document.documentElement.dataset.theme = name;
+    themeSelect.value = name;
+    themeColors = readThemeColors();
+    if (persist) {
+      try {
+        localStorage.setItem(THEME_STORAGE_KEY, name);
+      } catch (e) {
+        // Browsers may block storage; the theme still applies for this visit.
+      }
+    }
+    if (!worker) clearScreen();
+  }
+
+  let initialTheme = "neon";
+  try {
+    initialTheme = localStorage.getItem(THEME_STORAGE_KEY) || "neon";
+  } catch (e) {
+    // Use the default theme when storage is unavailable.
+  }
+  themeSelect.addEventListener("change", () => applyTheme(themeSelect.value, true));
+  applyTheme(initialTheme, false);
+
   const bezel = canvas.parentElement;
   const device = bezel.parentElement;
   const deviceColumn = device.parentElement;
@@ -208,7 +252,7 @@
   }
 
   function clearScreen() {
-    renderer.render({op: "clear"});
+    renderer.render({op: "fill", args: [themeColors.bg]});
     renderer.present();
   }
   clearScreen();
@@ -305,7 +349,7 @@
       log(`Worker error: ${e.message}`);
     };
     try {
-      runningWorker.postMessage({type:"start", code, sab, name:name || "index.js"});
+      runningWorker.postMessage({type:"start", code, sab, name:name || "index.js", theme:themeColors});
     } catch (e) {
       stopRuntime(false);
       throw e;

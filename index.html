@@ -4,7 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Bruce LILYGO T-Embed CC1101 Emulator</title>
-  <link rel="stylesheet" href="style.css">
+  <script>
+    try {
+      const savedTheme = localStorage.getItem("bruce-emulator-theme");
+      if (savedTheme) document.documentElement.dataset.theme = savedTheme;
+    } catch (error) {}
+  </script>
+  <link rel="stylesheet" href="style.css?v=8">
 </head>
 <body>
   <main class="app">
@@ -16,6 +22,19 @@
       <div class="header-meta">
         <p>Created by <a href="https://github.com/SasPes">SasPes</a></p>
         <div class="badge">320 × 170</div>
+        <label class="theme-picker">
+          <span>Theme</span>
+          <select id="theme" aria-label="Color theme">
+            <option value="neon">Neon Magenta</option>
+            <option value="midnight">Midnight Blue</option>
+            <option value="matrix">Terminal Green</option>
+            <option value="amber">Amber CRT</option>
+            <option value="crimson">Crimson</option>
+            <option value="ocean">Ocean Teal</option>
+            <option value="violet">Violet</option>
+            <option value="paper">Paper</option>
+          </select>
+        </label>
       </div>
     </header>
 
@@ -140,6 +159,6 @@
   </main>
 
   <script src="pixel-renderer.js"></script>
-  <script src="app.js?v=7"></script>
+  <script src="app.js?v=8"></script>
 </body>
 </html>

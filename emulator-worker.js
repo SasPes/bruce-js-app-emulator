@@ -699,6 +699,13 @@ Object.assign(globalThis, {
 onmessage = function(e) {
   if (e.data.type==="start") {
     input = new Int32Array(e.data.sab);
+    const theme = e.data.theme || {};
+    if (Number.isInteger(theme.bg)) BRUCE_BGCOLOR = theme.bg;
+    if (Number.isInteger(theme.primary)) {
+      BRUCE_PRICOLOR = theme.primary;
+      displayState.textColor = BRUCE_PRICOLOR;
+    }
+    if (Number.isInteger(theme.secondary)) BRUCE_SECCOLOR = theme.secondary;
     __filepath = __dirpath + "/" + (e.data.name || "index.js");
     try {
       // Bruce's current scripting environment is ES5-oriented; the emulator

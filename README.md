@@ -80,6 +80,9 @@ build command from the Pages table first and publish only `dist/`.
   and cannot start an older script. Read failures appear in the runtime console.
 - **Stop** ends the app and cancels any pending load; the camera icon saves the
   display as a **640 x 340 PNG**.
+- The **Theme** picker switches palettes and remembers your choice. The selected
+  theme also sets `BRUCE_BGCOLOR`, `BRUCE_PRICOLOR`, and `BRUCE_SECCOLOR` for
+  newly loaded apps.
 - The runtime console retains the newest **500 entries**, up to **100,000
   characters** total; individual entries longer than **10,000 characters**
   are truncated. **Clear log** also clears the retained entries.
